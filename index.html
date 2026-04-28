@@ -302,6 +302,19 @@ function RelaxGuide({beat}){
 }
 
  
+// ── AI CALL (Simulação) ──────────────────────────────────────────────────────
+const FREUD_SYSTEM = "Freud";
+const JUNG_SYSTEM = "Jung";
+
+async function callAI(system, userMessage) {
+  // Simula o tempo de "pensamento" da IA para ativar o seu ecrã de carregamento
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve("Esta é uma resposta simulada. A integração real com a IA foi desativada temporariamente para que possa testar o design e a navegação da aplicação livremente.");
+    }, 1500); 
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
   
 // ── MORNING RITUAL ───────────────────────────────────────────────────────────
