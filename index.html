@@ -301,25 +301,16 @@ function RelaxGuide({beat}){
   );
 }
 
-// ── AI CALL ──────────────────────────────────────────────────────────────────
-async function callAI(system,userMessage){
-  const res=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:700,
-      system,
-      messages:[{role:'user',content:userMessage}],
-    }),
+// ── // ── AI CALL ──────────────────────────────────────────────────────────────────
+async function callAI(system, userMessage) {
+  // Simula o tempo de resposta da IA (1,5 segundos) para você ver os efeitos de "carregando" da interface
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve("Esta é uma resposta simulada da IA. A integração real foi temporariamente desativada para que você possa testar o layout, a navegação e o restante do aplicativo livremente, sem precisar de chaves de desenvolvedor.");
+    }, 1500); 
   });
-  const data=await res.json();
-  return data.content?.map(b=>b.text||'').join('')||'';
 }
-
-const JUNG_SYSTEM=`You are Carl Gustav Jung, speaking in the first person. The user has just completed their evening Shadow Journal — a structured reflection on what disturbed them today and what it reveals about themselves. Read their responses and offer a brief, warm, penetrating Jungian reflection — 2 to 3 paragraphs. Draw naturally on your concepts: the Shadow, projection, integration, the unconscious, individuation, the Self. Do not lecture. Speak as a wise companion who sees deeply. End with a single question that invites further reflection. Sign as: — Jung`;
-
-const FREUD_SYSTEM=`You are Sigmund Freud, speaking in the first person. The user has briefly described a dream from last night. Offer a Freudian interpretation — 2 to 3 paragraphs. Draw on your actual concepts: wish fulfillment, the unconscious, latent vs manifest content, symbolism, repression, the id. Be precise, slightly formal, but warm. Do not ask follow-up questions. Give a confident interpretation, noting any symbols or patterns. End with: — Freud`;
+ interpretation — 2 to 3 paragraphs. Draw on your actual concepts: wish fulfillment, the unconscious, latent vs manifest content, symbolism, repression, the id. Be precise, slightly formal, but warm. Do not ask follow-up questions. Give a confident interpretation, noting any symbols or patterns. End with: — Freud`;
 
 // ── MORNING RITUAL ───────────────────────────────────────────────────────────
 function MorningRitual({onComplete}){
