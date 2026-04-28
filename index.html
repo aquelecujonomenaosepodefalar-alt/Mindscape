@@ -19,9 +19,13 @@ html,body,#root{height:100%;overflow:hidden;}
   --radius:12px;
 }
 body{background:var(--bg);color:var(--cream);font-family:'Jost',sans-serif;}
-::-webkit-scrollbar{width:4px;}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
-input:focus{outline:none;}
+textarea{font-family:'Cormorant Garamond',serif;resize:none;outline:none;}
+input:focus,textarea:focus{outline:none;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@keyframes nod{0%,100%{transform:rotate(0deg)}25%{transform:rotate(-14deg)}75%{transform:rotate(14deg)}}
+@keyframes sway{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes glow{0%,100%{opacity:.4}50%{opacity:1}}
 </style>
 </head>
 <body>
@@ -29,342 +33,590 @@ input:focus{outline:none;}
 <script type="text/babel">
 const{useState,useEffect,useRef,useCallback}=React;
 
+const C={bg:'#0f0e0b',bg2:'#181610',bg3:'#211e16',gold:'#c8973a',gold2:'#e8b84b',cream:'#f0e6d0',cream2:'#b8a98a',muted:'#5a5243',border:'rgba(200,151,58,0.18)',border2:'rgba(200,151,58,0.35)'};
+
+function makeAudio(){
+  let ctx=null,playing=false,nodes=[];
+  const start=()=>{
+    if(playing)return;
+    try{
+      ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const master=ctx.createGain();master.gain.value=0.07;master.connect(ctx.destination);
+      [[174.6,0],[261.6,.4],[349.2,.8],[440,1.3]].forEach(([f,d])=>{
+        const o=ctx.createOscillator(),g=ctx.createGain();
+        o.type='sine';o.frequency.value=f;g.gain.value=.5;
+        o.connect(g);g.connect(master);o.start(ctx.currentTime+d);
+        nodes.push(o);
+      });
+      playing=true;
+    }catch(e){}
+  };
+  const stop=()=>{
+    if(!playing)return;
+    nodes.forEach(n=>{try{n.stop();n.disconnect();}catch{}});
+    nodes=[];try{ctx.close();}catch{}ctx=null;playing=false;
+  };
+  return{start,stop};
+}
+
 const ADS=[
-  {text:"BetterHelp — Professional therapy, online. First month free.",cta:"Try Free"},
-  {text:"Headspace — Guided meditation for a calmer mind. 14-day trial.",cta:"Learn More"},
-  {text:"Audible — Millions of audiobooks. First month on us.",cta:"Start Now"},
+  {text:"BetterHelp — Professional therapy, online. Start your journey today.",cta:"Try Free"},
+  {text:"Headspace — Guided meditation. 14-day free trial.",cta:"Learn More"},
+  {text:"Audible — Millions of audiobooks. First month free.",cta:"Start Now"},
   {text:"Calm — Sleep stories, breathing & mindfulness.",cta:"Get Calm"},
 ];
 
 const MORNING=[
-  {id:"m1",icon:"✦",time:"5 min",title:"Shadow Journaling",who:"Carl Jung",desc:"Write one thing that unsettled you recently. Jung believed our 'shadow' — the suppressed parts of ourselves — holds the key to wholeness. Ask: what does this reaction reveal about me?"},
-  {id:"m2",icon:"◎",time:"4 min",title:"4-7-8 Breathwork",who:"Andrew Weil / CBT",desc:"Inhale 4 counts. Hold 7. Exhale slowly 8. Repeat 4 cycles. This activates the parasympathetic nervous system, reducing cortisol before your day begins."},
-  {id:"m3",icon:"◇",time:"3 min",title:"Intention Setting",who:"Viktor Frankl",desc:"Write: 'Today I will contribute meaning by…' Frankl taught that purpose — even in small acts — is the foundation of mental health. Anchor your day in meaning, not just tasks."},
-  {id:"m4",icon:"○",time:"3 min",title:"Embodiment Check",who:"Wilhelm Reich",desc:"Stand, feel your feet on the ground. Notice where tension lives in your body. Three slow head rolls. Unclench your jaw. Reich was first to map how emotions are held physically."},
+  {id:"m1",icon:"✦",time:"5 min",secs:300,title:"Shadow Journaling",who:"Carl Jung",type:"journal",
+   prompt:"What has unsettled or irritated you recently?\n\nJung taught that what disturbs us most reflects the parts of ourselves we have not yet integrated — the Shadow. Write without judgment. Let it surface.",
+   desc:"Write down one thing that unsettled you recently. Jung believed our shadow holds the key to integration."},
+  {id:"m2",icon:"◎",time:"4 min",secs:240,title:"4-7-8 Breathwork",who:"Andrew Weil / CBT",type:"breath",
+   prompt:"Inhale 4 · Hold 7 · Exhale 8\n\nFollow the circle. Four complete cycles. Let your nervous system downshift.",
+   desc:"Inhale for 4 counts. Hold for 7. Exhale for 8. Activates the parasympathetic nervous system."},
+  {id:"m3",icon:"◇",time:"3 min",secs:180,title:"Intention Setting",who:"Viktor Frankl",type:"journal",
+   prompt:"Complete this sentence:\n\n'Today I will contribute meaning by…'\n\nFrankl believed that even the smallest act, done with intention, is a form of freedom. Write what comes first.",
+   desc:"Write one sentence of intention. Frankl taught that purpose — even in small acts — is the foundation of mental health."},
+  {id:"m4",icon:"○",time:"3 min",secs:180,title:"Embodiment Check",who:"Wilhelm Reich",type:"move",
+   prompt:"Stand. Feel the floor. Follow the figure.\n\nThree slow head rolls. Release the jaw. Reich was first to show that emotions live in the body, not just the mind.",
+   desc:"Stand, feel your feet on the ground. Reich was first to map how emotions are held physically."},
 ];
 
 const EVENING=[
-  {id:"e1",icon:"✦",time:"5 min",title:"Meaning Review",who:"Viktor Frankl",desc:"What gave your day meaning? Even in suffering, Frankl found purpose. Write 1–3 moments that felt significant — however small. The act of noticing transforms experience."},
-  {id:"e2",icon:"◎",time:"5 min",title:"Gratitude Anchoring",who:"Martin Seligman",desc:"Write three specific things you're grateful for. Seligman's research shows this practice, done consistently, increases wellbeing scores within 3 weeks. Be specific, not generic."},
-  {id:"e3",icon:"◇",time:"4 min",title:"Thought Record",who:"Aaron Beck / CBT",desc:"What automatic thought held you back today? Write: Event → Thought → Feeling. Then reframe one thought. Beck's cognitive therapy starts exactly here, with what we tell ourselves."},
-  {id:"e4",icon:"○",time:"6 min",title:"Progressive Relaxation",who:"Edmund Jacobson",desc:"From toes upward, tense each muscle group 5 seconds then release. Jacobson's 1929 method remains the gold standard for somatic anxiety relief before sleep."},
+  {id:"e1",icon:"✦",time:"5 min",secs:300,title:"Meaning Review",who:"Viktor Frankl",type:"journal",
+   prompt:"What gave today meaning?\n\nEven in a difficult day — find one moment that mattered. A look, a decision, a small act of care. Frankl found meaning even in Auschwitz. It is always there.",
+   desc:"What gave your day meaning? The act of noticing transforms experience."},
+  {id:"e2",icon:"◎",time:"5 min",secs:300,title:"Gratitude Anchoring",who:"Martin Seligman",type:"journal",
+   prompt:"Write three specific things you are grateful for today.\n\nBe precise. Not 'my family' — but a specific moment with them. Seligman's research shows specificity is what makes this practice work.",
+   desc:"Write three specific things you're grateful for. Seligman shows this increases wellbeing within 3 weeks."},
+  {id:"e3",icon:"◇",time:"4 min",secs:240,title:"Thought Record",who:"Aaron Beck / CBT",type:"journal",
+   prompt:"Event → Thought → Feeling\n\nWrite what happened. Then what you told yourself. Then how you felt.\n\nNow rewrite the thought more compassionately. What would you say to a friend?",
+   desc:"Notice the story you told about events. Write: Event → Thought → Feeling. Then reframe one thought."},
+  {id:"e4",icon:"○",time:"6 min",secs:360,title:"Progressive Relaxation",who:"Edmund Jacobson",type:"move",
+   prompt:"Follow the body guide.\n\nTense each area for 5 seconds, then fully release. Move upward from the feet. Jacobson discovered in 1929 that the body cannot be anxious and relaxed at the same time.",
+   desc:"From toes upward, tense each muscle group for 5 seconds then release."},
 ];
 
 const BOOKS=[
-  {id:1,author:"Carl Jung",title:"Psychology of the Unconscious",year:1912,dur:"8h 42m",ok:true,desc:"Jung's breakthrough work exploring archetypes and symbols of the collective unconscious."},
+  {id:1,author:"Carl Jung",title:"Psychology of the Unconscious",year:1912,dur:"8h 42m",ok:true,desc:"Jung's breakthrough work exploring archetypes and the collective unconscious."},
   {id:2,author:"Carl Jung",title:"Psychological Types",year:1921,dur:"12h 15m",ok:true,desc:"The foundational text on introversion, extraversion, and the four psychological functions."},
-  {id:3,author:"Sigmund Freud",title:"The Interpretation of Dreams",year:1899,dur:"10h 33m",ok:true,desc:"Freud's masterwork — dreams as the royal road to the unconscious and wish fulfillment."},
-  {id:4,author:"Sigmund Freud",title:"Psychopathology of Everyday Life",year:1901,dur:"6h 20m",ok:true,desc:"How slips of the tongue, forgetting, and errors reveal hidden unconscious conflicts."},
-  {id:5,author:"Sigmund Freud",title:"Three Essays on Sexuality",year:1905,dur:"4h 10m",ok:true,desc:"Freud's foundational text on the development of human sexuality and libidinal stages."},
+  {id:3,author:"Sigmund Freud",title:"The Interpretation of Dreams",year:1899,dur:"10h 33m",ok:true,desc:"Dreams as the royal road to the unconscious and wish fulfillment."},
+  {id:4,author:"Sigmund Freud",title:"Psychopathology of Everyday Life",year:1901,dur:"6h 20m",ok:true,desc:"How slips of the tongue and forgetting reveal hidden unconscious conflicts."},
+  {id:5,author:"Sigmund Freud",title:"Three Essays on Sexuality",year:1905,dur:"4h 10m",ok:true,desc:"Freud's foundational text on the development of human sexuality."},
   {id:6,author:"B.F. Skinner",title:"The Behavior of Organisms",year:1938,dur:"9h 45m",ok:false,desc:"The landmark study of operant conditioning that defined behavioral psychology."},
-  {id:7,author:"Viktor Frankl",title:"Man's Search for Meaning",year:1946,dur:"5h 02m",ok:false,desc:"A survivor's account of Auschwitz and the birth of logotherapy — the search for purpose."},
-  {id:8,author:"Jacques Lacan",title:"Écrits: Selected Works",year:1966,dur:"14h 30m",ok:false,desc:"Lacan's dense writings on language, desire, and the structure of the unconscious."},
+  {id:7,author:"Viktor Frankl",title:"Man's Search for Meaning",year:1946,dur:"5h 02m",ok:false,desc:"A survivor's account of Auschwitz and the birth of logotherapy."},
+  {id:8,author:"Jacques Lacan",title:"Écrits: Selected Works",year:1966,dur:"14h 30m",ok:false,desc:"Lacan's writings on language, desire, and the structure of the unconscious."},
 ];
 
 const THERAPISTS={
-  jung:{
-    name:"Carl Jung",years:"1875 – 1961",role:"Founder of Analytical Psychology",
+  jung:{name:"Carl Jung",years:"1875–1961",role:"Founder of Analytical Psychology",
     intro:"Welcome, seeker. You have come to explore the depths. Tell me — what brought you here today? Perhaps a dream, a symbol that keeps returning, or a shadow you cannot shake?",
-    system:"You are Carl Gustav Jung, the Swiss psychiatrist and founder of analytical psychology. Speak as Jung would — wise, thoughtful, philosophical, occasionally mystical. Draw naturally on your concepts: the collective unconscious, archetypes (Shadow, Anima/Animus, Self, Persona), individuation, synchronicity, active imagination. Ask probing questions about dreams, symbols, fantasies, and inner conflicts. Be warm but profound. Respond in 2–4 paragraphs. Speak in first person as Jung himself.",
-  },
-  freud:{
-    name:"Sigmund Freud",years:"1856 – 1939",role:"Founder of Psychoanalysis",
+    system:"You are Carl Gustav Jung, the Swiss psychiatrist and founder of analytical psychology. Speak as Jung would — wise, thoughtful, philosophical, occasionally mystical. Draw on your concepts: the collective unconscious, archetypes (Shadow, Anima/Animus, Self, Persona), individuation, synchronicity, active imagination. Ask probing questions about dreams, symbols, and inner conflicts. Be warm but profound. 2–4 paragraphs. First person as Jung himself."},
+  freud:{name:"Sigmund Freud",years:"1856–1939",role:"Founder of Psychoanalysis",
     intro:"Ah. You have come. Good — most people resist this moment far longer than they should. Tell me, what brings you to the couch today? Begin wherever you like. There are no accidents.",
-    system:"You are Sigmund Freud, the Austrian neurologist and founder of psychoanalysis. Speak as Freud would — precise, intellectually confident, probing, slightly formal. Draw naturally on your concepts: the unconscious, repression, id/ego/superego, defense mechanisms, Oedipus complex, libido, transference, dream analysis, free association. Ask about childhood experiences, relationships, dreams, recurring patterns. Be warm but analytical. Respond in 2–4 paragraphs. Speak in first person as Freud himself.",
-  },
+    system:"You are Sigmund Freud, the Austrian neurologist and founder of psychoanalysis. Speak precisely, confidently, with analytical warmth. Draw on your concepts: the unconscious, repression, id/ego/superego, defense mechanisms, Oedipus complex, libido, transference, dream analysis. Ask about childhood, relationships, dreams, recurring patterns. 2–4 paragraphs. First person as Freud himself."},
 };
 
-// ─── AD BANNER ───────────────────────────────────────────────────────────────
+/* ── BREATH AVATAR ── */
+function BreathAvatar({phase}){
+  const size=phase==='hold'?68:phase==='inhale'?80:52;
+  return(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+      <div style={{position:'relative',width:140,height:140,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {[0,1,2].map(i=>(
+          <div key={i} style={{position:'absolute',width:(size+i*22)+'px',height:(size+i*22)+'px',borderRadius:'50%',border:`1px solid ${C.gold}`,opacity:.12+i*.08,transition:'all 1.4s ease'}}/>
+        ))}
+        <div style={{width:size,height:size,borderRadius:'50%',background:'rgba(200,151,58,0.1)',border:`1.5px solid ${C.gold}`,display:'flex',alignItems:'center',justifyContent:'center',transition:'all 1.4s ease'}}>
+          <span style={{fontSize:11,letterSpacing:2,color:C.gold}}>
+            {phase==='inhale'?'IN':phase==='hold'?'HOLD':'OUT'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── STICK FIGURE AVATAR ── */
+function StickFigure({ritual,beat}){
+  const parts=['Feet','Calves','Thighs','Abdomen','Chest','Shoulders','Arms','Face'];
+  const idx=ritual.id==='e4'?Math.floor(beat/2)%parts.length:0;
+  const isRelax=ritual.id==='e4';
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
+      <svg width="120" height="200" viewBox="0 0 120 200" style={{animation:isRelax?'none':'sway 3s ease-in-out infinite'}}>
+        {/* Head */}
+        <circle cx="60" cy="30" r="18" fill="none" stroke={C.cream2} strokeWidth="2"
+          style={{animation:isRelax?'none':'nod 4s ease-in-out infinite',transformOrigin:'60px 48px'}}/>
+        {/* Eyes */}
+        <circle cx="54" cy="28" r="2" fill={C.gold} opacity=".7"/>
+        <circle cx="66" cy="28" r="2" fill={C.gold} opacity=".7"/>
+        {/* Spine */}
+        <line x1="60" y1="48" x2="60" y2="110" stroke={C.cream2} strokeWidth="2"/>
+        {/* Left arm */}
+        <line x1="60" y1="65" x2="30" y2="90" stroke={C.cream2} strokeWidth="1.8"/>
+        <line x1="30" y1="90" x2="18" y2="112" stroke={isRelax&&idx===6?C.gold:C.cream2} strokeWidth={isRelax&&idx===6?3:1.8}/>
+        {/* Right arm */}
+        <line x1="60" y1="65" x2="90" y2="90" stroke={C.cream2} strokeWidth="1.8"/>
+        <line x1="90" y1="90" x2="102" y2="112" stroke={isRelax&&idx===6?C.gold:C.cream2} strokeWidth={isRelax&&idx===6?3:1.8}/>
+        {/* Left leg */}
+        <line x1="60" y1="110" x2="42" y2="155" stroke={isRelax&&idx<=1?C.gold:C.cream2} strokeWidth={isRelax&&idx<=1?3:1.8}/>
+        <line x1="42" y1="155" x2="36" y2="190" stroke={isRelax&&idx===0?C.gold2:isRelax&&idx===1?C.gold:C.cream2} strokeWidth={isRelax&&idx<=1?3:1.8}/>
+        {/* Right leg */}
+        <line x1="60" y1="110" x2="78" y2="155" stroke={isRelax&&idx<=1?C.gold:C.cream2} strokeWidth={isRelax&&idx<=1?3:1.8}/>
+        <line x1="78" y1="155" x2="84" y2="190" stroke={isRelax&&idx===0?C.gold2:isRelax&&idx===1?C.gold:C.cream2} strokeWidth={isRelax&&idx<=1?3:1.8}/>
+        {/* Ground dots */}
+        <circle cx="36" cy="192" r="3" fill={C.gold} opacity=".5"/>
+        <circle cx="84" cy="192" r="3" fill={C.gold} opacity=".5"/>
+        {/* Highlight area for relaxation */}
+        {isRelax&&idx===2&&<ellipse cx="60" cy="90" rx="18" ry="12" fill="rgba(200,151,58,0.15)" stroke={C.gold} strokeWidth="1" style={{animation:'glow 1s ease-in-out infinite'}}/>}
+        {isRelax&&idx===3&&<ellipse cx="60" cy="75" rx="16" ry="10" fill="rgba(200,151,58,0.15)" stroke={C.gold} strokeWidth="1" style={{animation:'glow 1s ease-in-out infinite'}}/>}
+        {isRelax&&idx===4&&<ellipse cx="60" cy="58" rx="22" ry="10" fill="rgba(200,151,58,0.15)" stroke={C.gold} strokeWidth="1" style={{animation:'glow 1s ease-in-out infinite'}}/>}
+        {isRelax&&idx===5&&<ellipse cx="60" cy="52" rx="28" ry="8" fill="rgba(200,151,58,0.15)" stroke={C.gold} strokeWidth="1" style={{animation:'glow 1s ease-in-out infinite'}}/>}
+        {isRelax&&idx===7&&<circle cx="60" cy="30" r="20" fill="rgba(200,151,58,0.15)" stroke={C.gold} strokeWidth="1" style={{animation:'glow 1s ease-in-out infinite'}}/>}
+      </svg>
+      {isRelax&&(
+        <div style={{textAlign:'center'}}>
+          <div style={{fontSize:12,color:C.gold,letterSpacing:1}}>{parts[idx]}</div>
+          <div style={{fontSize:10,color:C.muted,marginTop:2}}>Tense 5s → Release</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── RITUAL MODAL ── */
+function RitualModal({ritual,onClose,onComplete}){
+  const[phase,setPhase]=useState('ready');
+  const[timeLeft,setTimeLeft]=useState(ritual.secs);
+  const[text,setText]=useState(()=>localStorage.getItem(`ms_draft_${ritual.id}`)||'');
+  const[breathPhase,setBreathPhase]=useState('inhale');
+  const[beat,setBeat]=useState(0);
+  const[soundOn,setSoundOn]=useState(true);
+  const[saved,setSaved]=useState(false);
+  const audio=useRef(null);
+  const timerRef=useRef(null);
+  const breathRef=useRef(null);
+  const beatRef=useRef(null);
+
+  useEffect(()=>{
+    audio.current=makeAudio();
+    return()=>{
+      audio.current.stop();
+      clearInterval(timerRef.current);
+      clearInterval(breathRef.current);
+      clearInterval(beatRef.current);
+    };
+  },[]);
+
+  useEffect(()=>{
+    if(text)localStorage.setItem(`ms_draft_${ritual.id}`,text);
+  },[text]);
+
+  const begin=()=>{
+    setPhase('active');
+    if(soundOn)audio.current.start();
+    timerRef.current=setInterval(()=>{
+      setTimeLeft(t=>{
+        if(t<=1){clearInterval(timerRef.current);setPhase('done');onComplete(ritual.id);return 0;}
+        return t-1;
+      });
+    },1000);
+    if(ritual.type==='breath'){
+      const seq=['inhale','inhale','inhale','inhale','hold','hold','hold','hold','hold','hold','hold','exhale','exhale','exhale','exhale','exhale','exhale','exhale','exhale'];
+      let i=0;breathRef.current=setInterval(()=>{setBreathPhase(seq[i%seq.length]);i++;},1000);
+    }
+    beatRef.current=setInterval(()=>setBeat(b=>b+1),2000);
+  };
+
+  const toggleSound=()=>{
+    if(soundOn){audio.current.stop();setSoundOn(false);}
+    else{audio.current.start();setSoundOn(true);}
+  };
+
+  const saveEntry=()=>{
+    const key=`ms_journal_${ritual.id}_${new Date().toISOString().split('T')[0]}`;
+    localStorage.setItem(key,text);
+    localStorage.removeItem(`ms_draft_${ritual.id}`);
+    setSaved(true);
+  };
+
+  const fmt=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+  const pct=(ritual.secs-timeLeft)/ritual.secs*100;
+  const circ=2*Math.PI*24;
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'flex-end',zIndex:200,backdropFilter:'blur(8px)'}}>
+      <div style={{width:'100%',maxHeight:'94vh',background:C.bg2,borderTop:`1px solid ${C.border2}`,borderRadius:'22px 22px 0 0',overflowY:'auto',animation:'fadeUp .4s ease'}}>
+
+        {/* Drag handle */}
+        <div style={{width:36,height:3,background:C.muted,borderRadius:3,margin:'14px auto 0'}}/>
+
+        {/* Header */}
+        <div style={{padding:'14px 20px',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div>
+            <div style={{fontSize:9,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:3}}>{ritual.who}</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:C.cream}}>{ritual.icon} {ritual.title}</div>
+          </div>
+          {/* Timer ring */}
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{position:'relative',width:52,height:52}}>
+              <svg width="52" height="52" viewBox="0 0 52 52">
+                <circle cx="26" cy="26" r="24" fill="none" stroke={C.bg3} strokeWidth="3"/>
+                <circle cx="26" cy="26" r="24" fill="none" stroke={C.gold} strokeWidth="3"
+                  strokeDasharray={circ} strokeDashoffset={circ*(1-pct/100)}
+                  strokeLinecap="round" transform="rotate(-90 26 26)"
+                  style={{transition:'stroke-dashoffset .8s linear'}}/>
+              </svg>
+              <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:C.gold,fontWeight:500}}>
+                {fmt(timeLeft)}
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:'none',border:'none',color:C.muted,fontSize:20,cursor:'pointer'}}>✕</button>
+          </div>
+        </div>
+
+        {/* Prompt */}
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${C.border}`,background:'rgba(200,151,58,0.04)'}}>
+          <p style={{fontSize:14,color:C.cream2,lineHeight:1.7,whiteSpace:'pre-line',fontFamily:"'Cormorant Garamond',serif",fontStyle:'italic',fontSize:16}}>{ritual.prompt}</p>
+        </div>
+
+        <div style={{padding:'20px'}}>
+
+          {/* READY */}
+          {phase==='ready'&&(
+            <div style={{textAlign:'center',paddingBottom:8}}>
+              <div style={{fontSize:48,marginBottom:16,opacity:.4}}>
+                {ritual.type==='journal'?'✎':ritual.type==='breath'?'◎':'○'}
+              </div>
+              <p style={{fontSize:14,color:C.cream2,lineHeight:1.7,marginBottom:28,fontFamily:"'Cormorant Garamond',serif",fontStyle:'italic',fontSize:17}}>
+                {ritual.type==='journal'?'Find a quiet moment. Open your heart. The page is waiting.'
+                  :ritual.type==='breath'?'Sit comfortably. Close your eyes. Let the breath lead.'
+                  :'Stand tall. Feel the ground beneath you. Begin when ready.'}
+              </p>
+              <button onClick={begin} style={{padding:'14px 44px',background:C.gold,border:'none',borderRadius:30,color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1,cursor:'pointer',fontWeight:500}}>
+                Begin Ritual
+              </button>
+            </div>
+          )}
+
+          {/* ACTIVE */}
+          {phase==='active'&&(
+            <div>
+              {ritual.type==='breath'&&(
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:16,marginBottom:20}}>
+                  <BreathAvatar phase={breathPhase}/>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,width:'100%'}}>
+                    {[['Inhale','4'],['Hold','7'],['Exhale','8']].map(([l,n])=>(
+                      <div key={l} style={{textAlign:'center',padding:'10px 6px',background:breathPhase.includes(l.toLowerCase())?'rgba(200,151,58,0.1)':C.bg3,border:`1px solid ${breathPhase.includes(l.toLowerCase())?C.border2:C.border}`,borderRadius:10,transition:'all .6s'}}>
+                        <div style={{fontSize:12,color:breathPhase.includes(l.toLowerCase())?C.gold:C.muted,letterSpacing:1}}>{l}</div>
+                        <div style={{fontSize:22,color:C.cream,fontFamily:"'Cormorant Garamond',serif"}}>{n}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {ritual.type==='move'&&(
+                <div style={{display:'flex',justifyContent:'center',marginBottom:20}}>
+                  <StickFigure ritual={ritual} beat={beat}/>
+                </div>
+              )}
+
+              {ritual.type==='journal'&&(
+                <div style={{marginBottom:16}}>
+                  <textarea
+                    value={text}
+                    onChange={e=>setText(e.target.value)}
+                    placeholder="Write freely here. This is your space…"
+                    autoFocus
+                    style={{width:'100%',minHeight:160,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px',color:C.cream,fontSize:17,lineHeight:1.8}}
+                  />
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
+                    <span style={{fontSize:11,color:C.muted}}>{text.length} characters</span>
+                    <button onClick={saveEntry} disabled={!text.trim()||saved} style={{padding:'6px 18px',background:saved?'transparent':text.trim()?C.gold:C.bg3,border:`1px solid ${saved?C.border2:text.trim()?C.gold:C.border}`,borderRadius:20,color:saved?C.gold:text.trim()?C.bg:C.muted,fontFamily:"'Jost',sans-serif",fontSize:12,cursor:text.trim()&&!saved?'pointer':'default',letterSpacing:1}}>
+                      {saved?'Saved ✦':'Save Entry'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sound toggle */}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:C.bg3,borderRadius:10,border:`1px solid ${C.border}`}}>
+                <span style={{fontSize:12,color:C.cream2}}>♪ Ambient tones</span>
+                <button onClick={toggleSound} style={{padding:'4px 14px',borderRadius:20,border:`1px solid ${C.border2}`,background:soundOn?'rgba(200,151,58,0.12)':'transparent',color:soundOn?C.gold:C.muted,fontFamily:"'Jost',sans-serif",fontSize:11,cursor:'pointer'}}>
+                  {soundOn?'On ◉':'Off ◌'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* DONE */}
+          {phase==='done'&&(
+            <div style={{textAlign:'center',paddingBottom:8}}>
+              <div style={{fontSize:44,marginBottom:12,animation:'pulse 1.2s ease 3',color:C.gold}}>✦</div>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:C.gold,marginBottom:8}}>Ritual Complete</div>
+              <p style={{fontSize:14,color:C.cream2,lineHeight:1.7,marginBottom:24,fontFamily:"'Cormorant Garamond',serif",fontStyle:'italic',fontSize:16}}>
+                {ritual.type==='journal'?'Your reflection has been recorded. The unconscious is listening.'
+                  :ritual.type==='breath'?'Your nervous system is calmer. Carry this stillness forward.'
+                  :'Your body has spoken. Integration begins with awareness.'}
+              </p>
+              {ritual.type==='journal'&&text&&!saved&&(
+                <button onClick={saveEntry} style={{marginBottom:12,padding:'12px 28px',background:C.gold,border:'none',borderRadius:30,color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',display:'block',width:'100%',letterSpacing:1}}>
+                  Save Journal Entry ✦
+                </button>
+              )}
+              {saved&&(
+                <div style={{marginBottom:12,padding:'10px',background:'rgba(200,151,58,0.08)',border:`1px solid ${C.border2}`,borderRadius:10,color:C.gold,fontSize:13}}>
+                  ✦ Entry saved to your journal
+                </div>
+              )}
+              <button onClick={onClose} style={{padding:'12px 28px',background:'transparent',border:`1px solid ${C.border2}`,borderRadius:30,color:C.gold,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',width:'100%'}}>
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── AD BANNER ── */
 function AdBanner(){
   const[i,setI]=useState(0);
   useEffect(()=>{const t=setInterval(()=>setI(x=>(x+1)%ADS.length),10000);return()=>clearInterval(t);},[]);
   const ad=ADS[i];
   return(
-    <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"6px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-      <span style={{fontSize:9,letterSpacing:2,color:"var(--muted)",border:"1px solid var(--muted)",padding:"2px 5px",borderRadius:3}}>AD</span>
-      <span style={{fontSize:12,color:"var(--cream2)",flex:1}}>{ad.text}</span>
-      <span style={{fontSize:11,color:"var(--gold)",border:"1px solid var(--border2)",padding:"3px 10px",borderRadius:20,cursor:"pointer",whiteSpace:"nowrap"}}>{ad.cta}</span>
+    <div style={{background:C.bg2,borderBottom:`1px solid ${C.border}`,padding:'6px 14px',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+      <span style={{fontSize:9,letterSpacing:2,color:C.muted,border:`1px solid ${C.muted}`,padding:'2px 5px',borderRadius:3}}>AD</span>
+      <span style={{fontSize:12,color:C.cream2,flex:1}}>{ad.text}</span>
+      <span style={{fontSize:11,color:C.gold,border:`1px solid ${C.border2}`,padding:'3px 10px',borderRadius:20,cursor:'pointer',whiteSpace:'nowrap'}}>{ad.cta}</span>
     </div>
   );
 }
 
-// ─── RITUALS ─────────────────────────────────────────────────────────────────
+/* ── RITUALS SCREEN ── */
 function RitualsScreen({checks,toggle}){
-  const[mode,setMode]=useState("morning");
-  const list=mode==="morning"?MORNING:EVENING;
+  const[mode,setMode]=useState('morning');
+  const[active,setActive]=useState(null);
+  const list=mode==='morning'?MORNING:EVENING;
   const done=list.filter(r=>checks[r.id]).length;
   const pct=Math.round(done/list.length*100);
   return(
-    <div style={{padding:"22px 18px 80px",overflowY:"auto",height:"100%"}}>
+    <div style={{height:'100%',overflowY:'auto',padding:'22px 18px 80px'}}>
       <div style={{marginBottom:18}}>
-        <div style={{fontSize:10,letterSpacing:2,color:"var(--gold)",textTransform:"uppercase",marginBottom:4}}>Daily Practice</div>
+        <div style={{fontSize:10,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Daily Practice</div>
         <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300}}>Your Rituals</div>
-        <p style={{fontSize:13,color:"var(--cream2)",marginTop:5,lineHeight:1.6}}>Curated by the great minds of psychology. Practiced daily, these rituals compound.</p>
+        <p style={{fontSize:13,color:C.cream2,marginTop:5,lineHeight:1.6}}>Tap any ritual to open a guided immersive session with timer, sound and your practice tool.</p>
       </div>
-      <div style={{display:"flex",background:"var(--bg2)",borderRadius:30,padding:3,border:"1px solid var(--border)",marginBottom:20,width:"fit-content"}}>
-        {["morning","evening"].map(m=>(
-          <button key={m} onClick={()=>setMode(m)} style={{padding:"7px 18px",borderRadius:27,border:"none",cursor:"pointer",background:mode===m?"var(--gold)":"transparent",color:mode===m?"var(--bg)":"var(--muted)",fontFamily:"'Jost',sans-serif",fontSize:11,letterSpacing:"1.5px",textTransform:"uppercase",fontWeight:mode===m?500:400,transition:"all .2s"}}>
-            {m==="morning"?"☀ Morning":"☽ Evening"}
+      <div style={{display:'flex',background:C.bg2,borderRadius:30,padding:3,border:`1px solid ${C.border}`,marginBottom:20,width:'fit-content'}}>
+        {['morning','evening'].map(m=>(
+          <button key={m} onClick={()=>setMode(m)} style={{padding:'7px 18px',borderRadius:27,border:'none',cursor:'pointer',background:mode===m?C.gold:'transparent',color:mode===m?C.bg:C.muted,fontFamily:"'Jost',sans-serif",fontSize:11,letterSpacing:'1.5px',textTransform:'uppercase',fontWeight:mode===m?500:400,transition:'all .2s'}}>
+            {m==='morning'?'☀ Morning':'☽ Evening'}
           </button>
         ))}
       </div>
-      <div style={{marginBottom:18}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
-          <span style={{fontSize:12,color:"var(--cream2)"}}>{done}/{list.length} completed</span>
-          <span style={{fontSize:12,color:"var(--gold)"}}>{pct}%</span>
-        </div>
-        <div style={{height:3,background:"var(--bg3)",borderRadius:3}}>
-          <div style={{height:"100%",width:pct+"%",background:"var(--gold)",borderRadius:3,transition:"width .4s"}}/>
-        </div>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:7}}>
+        <span style={{fontSize:12,color:C.cream2}}>{done}/{list.length} completed</span>
+        <span style={{fontSize:12,color:C.gold}}>{pct}%</span>
       </div>
-      <div style={{padding:"12px 16px",background:"rgba(200,151,58,0.06)",border:"1px solid var(--border)",borderRadius:10,marginBottom:18}}>
-        <p style={{fontSize:15,fontStyle:"italic",fontFamily:"'Cormorant Garamond',serif",color:"var(--cream2)",lineHeight:1.6}}>
-          {mode==="morning"
-            ?'"Until you make the unconscious conscious, it will direct your life and you will call it fate." — Carl Jung'
-            :'"Between stimulus and response there is a space. In that space is our power to choose." — Viktor Frankl'}
+      <div style={{height:3,background:C.bg3,borderRadius:3,marginBottom:18}}>
+        <div style={{height:'100%',width:pct+'%',background:C.gold,borderRadius:3,transition:'width .4s'}}/>
+      </div>
+      <div style={{padding:'12px 16px',background:'rgba(200,151,58,0.06)',border:`1px solid ${C.border}`,borderRadius:10,marginBottom:18}}>
+        <p style={{fontSize:15,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:C.cream2,lineHeight:1.6}}>
+          {mode==='morning'?'"Until you make the unconscious conscious, it will direct your life and you will call it fate." — Carl Jung':'"Between stimulus and response there is a space. In that space is our power to choose." — Viktor Frankl'}
         </p>
       </div>
       {list.map(r=>(
-        <div key={r.id} onClick={()=>toggle(r.id)} style={{background:checks[r.id]?"rgba(200,151,58,0.07)":"var(--bg2)",border:`1px solid ${checks[r.id]?"var(--border2)":"var(--border)"}`,borderRadius:"var(--radius)",padding:"14px 16px",cursor:"pointer",display:"flex",gap:14,alignItems:"flex-start",marginBottom:10,transition:"all .25s"}}>
-          <div style={{width:26,height:26,borderRadius:"50%",flexShrink:0,marginTop:2,border:`1.5px solid ${checks[r.id]?"var(--gold)":"var(--muted)"}`,background:checks[r.id]?"var(--gold)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--bg)",fontSize:13,fontWeight:600,transition:"all .25s"}}>
-            {checks[r.id]?"✓":""}
+        <div key={r.id} onClick={()=>setActive(r)} style={{background:checks[r.id]?'rgba(200,151,58,0.07)':C.bg2,border:`1px solid ${checks[r.id]?C.border2:C.border}`,borderRadius:'var(--radius)',padding:'14px 16px',cursor:'pointer',display:'flex',gap:14,alignItems:'flex-start',marginBottom:10,transition:'all .25s'}}>
+          <div style={{width:26,height:26,borderRadius:'50%',flexShrink:0,marginTop:2,border:`1.5px solid ${checks[r.id]?C.gold:C.muted}`,background:checks[r.id]?C.gold:'transparent',display:'flex',alignItems:'center',justifyContent:'center',color:C.bg,fontSize:13,fontWeight:600}}>
+            {checks[r.id]?'✓':''}
           </div>
           <div style={{flex:1}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:500,color:checks[r.id]?"var(--gold)":"var(--cream)"}}>{r.icon} {r.title}</span>
-              <span style={{fontSize:10,color:"var(--muted)",letterSpacing:1}}>{r.time}</span>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:500,color:checks[r.id]?C.gold:C.cream}}>{r.icon} {r.title}</span>
+              <span style={{fontSize:10,color:C.muted,letterSpacing:1}}>{r.time}</span>
             </div>
-            <div style={{fontSize:10,letterSpacing:"1.5px",textTransform:"uppercase",color:"var(--gold)",opacity:.7,marginBottom:6}}>{r.who}</div>
-            <p style={{fontSize:13,color:"var(--cream2)",lineHeight:1.6,opacity:checks[r.id]?.6:1}}>{r.desc}</p>
+            <div style={{fontSize:10,letterSpacing:'1.5px',textTransform:'uppercase',color:C.gold,opacity:.7,marginBottom:6}}>{r.who}</div>
+            <p style={{fontSize:13,color:C.cream2,lineHeight:1.6,opacity:checks[r.id]?.5:1,marginBottom:8}}>{r.desc}</p>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              <span style={{fontSize:10,color:C.gold,background:'rgba(200,151,58,0.08)',border:`1px solid ${C.border}`,padding:'3px 10px',borderRadius:20,letterSpacing:.5}}>
+                {r.type==='journal'?'✎ Journal':r.type==='breath'?'◎ Breathwork':'○ Movement'}
+              </span>
+              <span style={{fontSize:10,color:C.cream2,background:C.bg3,border:`1px solid ${C.border}`,padding:'3px 10px',borderRadius:20}}>Tap to begin →</span>
+            </div>
           </div>
         </div>
       ))}
       {done===list.length&&(
-        <div style={{textAlign:"center",padding:20}}>
+        <div style={{textAlign:'center',padding:20}}>
           <div style={{fontSize:28,marginBottom:8}}>✦</div>
-          <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:"var(--gold)"}}>
-            {mode==="morning"?"Ritual complete. Your day begins with intention.":"Ritual complete. Rest well, with meaning."}
+          <p style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:C.gold}}>
+            {mode==='morning'?'Ritual complete. Your day begins with intention.':'Ritual complete. Rest well, with meaning.'}
           </p>
         </div>
       )}
+      {active&&<RitualModal ritual={active} onClose={()=>setActive(null)} onComplete={id=>toggle(id)}/>}
     </div>
   );
 }
 
-// ─── LIBRARY ──────────────────────────────────────────────────────────────────
+/* ── LIBRARY ── */
 function LibraryScreen(){
   const[playing,setPlaying]=useState(null);
+  const[isPlaying,setIsPlaying]=useState(false);
   const[progress,setProgress]=useState({});
-  const[active,setActive]=useState(false);
-  const timer=useRef(null);
-
-  const play=(book)=>{
-    if(playing&&playing.id===book.id){
-      setActive(a=>{
-        if(a)clearInterval(timer.current);
-        else timer.current=setInterval(()=>setProgress(p=>({...p,[book.id]:Math.min((p[book.id]||0)+0.06,100)})),500);
-        return!a;
-      });
+  const timerRef=useRef(null);
+  const handlePlay=(book)=>{
+    if(playing?.id===book.id){
+      setIsPlaying(p=>{if(p)clearInterval(timerRef.current);else timerRef.current=setInterval(()=>setProgress(prev=>({...prev,[book.id]:Math.min((prev[book.id]||0)+0.08,100)})),500);return!p;});
     }else{
-      clearInterval(timer.current);
-      setPlaying(book);
-      setActive(true);
-      timer.current=setInterval(()=>setProgress(p=>({...p,[book.id]:Math.min((p[book.id]||0)+0.06,100)})),500);
+      clearInterval(timerRef.current);setPlaying(book);setIsPlaying(true);
+      timerRef.current=setInterval(()=>setProgress(prev=>({...prev,[book.id]:Math.min((prev[book.id]||0)+0.08,100)})),500);
     }
   };
-
-  const fmtTime=(book,pct)=>{
-    const parts=book.dur.split("h ");
-    const total=parseInt(parts[0])*60+parseInt(parts[1]);
-    const el=Math.round(total*(pct/100));
-    return`${Math.floor(el/60)}h ${el%60}m`;
-  };
-
+  useEffect(()=>()=>clearInterval(timerRef.current),[]);
+  const fmtTime=(book,pct)=>{const[h,m]=book.dur.split('h ');const total=parseInt(h)*60+parseInt(m);const el=Math.round(total*(pct/100));return`${Math.floor(el/60)}h ${el%60}m`;};
   return(
-    <div style={{height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
-      <div style={{padding:"22px 18px 14px",flexShrink:0}}>
-        <div style={{fontSize:10,letterSpacing:2,color:"var(--gold)",textTransform:"uppercase",marginBottom:4}}>Public Domain</div>
+    <div style={{height:'100%',overflowY:'auto',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'22px 18px 14px',flexShrink:0}}>
+        <div style={{fontSize:10,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Public Domain</div>
         <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300}}>Audiobook Library</div>
-        <p style={{fontSize:13,color:"var(--cream2)",marginTop:5,lineHeight:1.6}}>The collected works of the great minds. Listen, absorb, transform.</p>
+        <p style={{fontSize:13,color:C.cream2,marginTop:5,lineHeight:1.6}}>The collected works of the great minds. Listen, absorb, transform.</p>
       </div>
-
       {playing&&(
-        <div style={{margin:"0 18px 14px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"var(--radius)",padding:"14px 16px",flexShrink:0}}>
-          <div style={{fontSize:10,letterSpacing:2,color:"var(--gold)",textTransform:"uppercase",marginBottom:2}}>{playing.author}</div>
+        <div style={{margin:'0 18px 14px',background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'14px 16px',flexShrink:0}}>
+          <div style={{fontSize:10,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:2}}>{playing.author}</div>
           <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:17,marginBottom:10}}>{playing.title}</div>
-          <div style={{height:3,background:"var(--bg3)",borderRadius:3,marginBottom:6}}>
-            <div style={{height:"100%",width:(progress[playing.id]||0)+"%",background:"var(--gold)",borderRadius:3,transition:"width .5s linear"}}/>
+          <div style={{height:3,background:C.bg3,borderRadius:3,marginBottom:6}}><div style={{height:'100%',width:(progress[playing.id]||0)+'%',background:C.gold,borderRadius:3,transition:'width .5s linear'}}/></div>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}>
+            <span style={{fontSize:11,color:C.muted}}>{fmtTime(playing,progress[playing.id]||0)}</span>
+            <span style={{fontSize:11,color:C.muted}}>{playing.dur}</span>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
-            <span style={{fontSize:11,color:"var(--muted)"}}>{fmtTime(playing,progress[playing.id]||0)}</span>
-            <span style={{fontSize:11,color:"var(--muted)"}}>{playing.dur}</span>
-          </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:24}}>
-            <button onClick={()=>setProgress(p=>({...p,[playing.id]:Math.max((p[playing.id]||0)-3,0)}))} style={{background:"none",border:"none",color:"var(--cream2)",fontSize:18,cursor:"pointer"}}>⟪</button>
-            <button onClick={()=>play(playing)} style={{width:48,height:48,borderRadius:"50%",background:"var(--gold)",border:"none",fontSize:18,cursor:"pointer",color:"var(--bg)"}}>
-              {active?"⏸":"▶"}
-            </button>
-            <button onClick={()=>setProgress(p=>({...p,[playing.id]:Math.min((p[playing.id]||0)+3,100)}))} style={{background:"none",border:"none",color:"var(--cream2)",fontSize:18,cursor:"pointer"}}>⟫</button>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:24}}>
+            <button onClick={()=>setProgress(p=>({...p,[playing.id]:Math.max((p[playing.id]||0)-3,0)}))} style={{background:'none',border:'none',color:C.cream2,fontSize:18,cursor:'pointer'}}>⟪</button>
+            <button onClick={()=>handlePlay(playing)} style={{width:48,height:48,borderRadius:'50%',background:C.gold,border:'none',fontSize:18,cursor:'pointer',color:C.bg}}>{isPlaying?'⏸':'▶'}</button>
+            <button onClick={()=>setProgress(p=>({...p,[playing.id]:Math.min((p[playing.id]||0)+3,100)}))} style={{background:'none',border:'none',color:C.cream2,fontSize:18,cursor:'pointer'}}>⟫</button>
           </div>
         </div>
       )}
-
-      <div style={{padding:"0 18px 80px",overflowY:"auto",flex:1}}>
+      <div style={{padding:'0 18px 80px',overflowY:'auto',flex:1}}>
         {BOOKS.map(book=>(
-          <div key={book.id} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--radius)",padding:"14px",marginBottom:10,display:"flex",gap:12,alignItems:"center"}}>
-            <div style={{width:46,height:62,borderRadius:5,flexShrink:0,background:book.ok?"rgba(200,151,58,0.12)":"var(--bg3)",border:`1px solid ${book.ok?"var(--border2)":"var(--border)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"var(--gold)"}}>
-              {book.ok?"◎":"◇"}
-            </div>
+          <div key={book.id} style={{background:C.bg2,border:`1px solid ${C.border}`,borderRadius:'var(--radius)',padding:'14px',marginBottom:10,display:'flex',gap:12,alignItems:'center'}}>
+            <div style={{width:46,height:62,borderRadius:5,flexShrink:0,background:book.ok?'rgba(200,151,58,0.12)':C.bg3,border:`1px solid ${book.ok?C.border2:C.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,color:C.gold}}>{book.ok?'◎':'◇'}</div>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:10,color:"var(--gold)",letterSpacing:"1.5px",textTransform:"uppercase",marginBottom:2}}>{book.author}</div>
+              <div style={{fontSize:10,color:C.gold,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:2}}>{book.author}</div>
               <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,marginBottom:3,lineHeight:1.3}}>{book.title}</div>
-              <p style={{fontSize:12,color:"var(--cream2)",lineHeight:1.5,marginBottom:8}}>{book.desc}</p>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:11,color:"var(--muted)"}}>{book.year} · {book.dur}</span>
-                {book.ok
-                  ?<button onClick={()=>play(book)} style={{padding:"4px 14px",borderRadius:20,background:"var(--gold)",border:"none",color:"var(--bg)",fontFamily:"'Jost',sans-serif",fontSize:11,cursor:"pointer",fontWeight:500}}>
-                    {playing&&playing.id===book.id&&active?"⏸ Pause":"▶ Listen"}
-                  </button>
-                  :<span style={{fontSize:10,letterSpacing:1,color:"var(--muted)",border:"1px solid var(--border)",padding:"3px 10px",borderRadius:20}}>Coming Soon</span>
-                }
+              <p style={{fontSize:12,color:C.cream2,lineHeight:1.5,marginBottom:8}}>{book.desc}</p>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:11,color:C.muted}}>{book.year} · {book.dur}</span>
+                {book.ok?<button onClick={()=>handlePlay(book)} style={{padding:'4px 14px',borderRadius:20,background:C.gold,border:'none',color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:11,cursor:'pointer',fontWeight:500}}>{playing?.id===book.id&&isPlaying?'⏸ Pause':'▶ Listen'}</button>
+                :<span style={{fontSize:10,letterSpacing:1,color:C.muted,border:`1px solid ${C.border}`,padding:'3px 10px',borderRadius:20}}>Coming Soon</span>}
               </div>
             </div>
           </div>
         ))}
-        <div style={{padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,fontSize:12,color:"var(--muted)",lineHeight:1.6}}>
-          ℹ Available titles are in the public domain. Audiobooks sourced from LibriVox. Other titles pending rights clearance.
-        </div>
+        <div style={{padding:'12px 14px',background:C.bg2,border:`1px solid ${C.border}`,borderRadius:10,fontSize:12,color:C.muted,lineHeight:1.6}}>ℹ Available titles are in the public domain. Sourced from LibriVox.</div>
       </div>
     </div>
   );
 }
 
-// ─── CHAT ────────────────────────────────────────────────────────────────────
+/* ── CHAT ── */
 function ChatScreen(){
   const[who,setWho]=useState(null);
   const[msgs,setMsgs]=useState([]);
-  const[inp,setInp]=useState("");
+  const[inp,setInp]=useState('');
   const[loading,setLoading]=useState(false);
   const bottom=useRef(null);
-
-  useEffect(()=>{
-    if(who&&msgs.length===0)setMsgs([{role:"assistant",content:THERAPISTS[who].intro}]);
-  },[who]);
-
-  useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[msgs,loading]);
-
+  useEffect(()=>{if(who&&msgs.length===0)setMsgs([{role:'assistant',content:THERAPISTS[who].intro}]);},[who]);
+  useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth'});},[msgs,loading]);
   const send=useCallback(async()=>{
-    const text=inp.trim();
-    if(!text||loading)return;
-    setInp("");
-    const next=[...msgs,{role:"user",content:text}];
-    setMsgs(next);
-    setLoading(true);
+    const text=inp.trim();if(!text||loading)return;
+    setInp('');const next=[...msgs,{role:'user',content:text}];setMsgs(next);setLoading(true);
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:THERAPISTS[who].system,messages:next})
-      });
+      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:THERAPISTS[who].system,messages:next})});
       const data=await res.json();
-      const reply=data.content?.map(b=>b.text||"").join("")||"A moment of silence… please try again.";
-      setMsgs(m=>[...m,{role:"assistant",content:reply}]);
-    }catch{
-      setMsgs(m=>[...m,{role:"assistant",content:"A moment of silence… please try again shortly."}]);
-    }finally{setLoading(false);}
+      const reply=data.content?.map(b=>b.text||'').join('')||'A moment of silence… please try again.';
+      setMsgs(m=>[...m,{role:'assistant',content:reply}]);
+    }catch{setMsgs(m=>[...m,{role:'assistant',content:'A moment of silence… please try again shortly.'}]);}
+    finally{setLoading(false);}
   },[inp,loading,msgs,who]);
-
   if(!who)return(
-    <div style={{padding:"22px 18px",overflowY:"auto",height:"100%"}}>
+    <div style={{padding:'22px 18px',overflowY:'auto',height:'100%'}}>
       <div style={{marginBottom:24}}>
-        <div style={{fontSize:10,letterSpacing:2,color:"var(--gold)",textTransform:"uppercase",marginBottom:4}}>AI Sessions</div>
+        <div style={{fontSize:10,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:4}}>AI Sessions</div>
         <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300}}>Speak with the Masters</div>
-        <p style={{fontSize:13,color:"var(--cream2)",marginTop:5,lineHeight:1.6}}>Choose your analyst. The AI embodies their actual theories, language and method. For self-reflection — not clinical advice.</p>
+        <p style={{fontSize:13,color:C.cream2,marginTop:5,lineHeight:1.6}}>Choose your analyst. For self-reflection — not clinical advice.</p>
       </div>
       {Object.entries(THERAPISTS).map(([key,t])=>(
-        <div key={key} onClick={()=>setWho(key)} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--radius)",padding:"20px",marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}
-          onMouseEnter={e=>e.currentTarget.style.borderColor="var(--border2)"}
-          onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
-          <div style={{position:"absolute",right:14,top:10,fontSize:52,opacity:.05,fontFamily:"'Cormorant Garamond',serif"}}>Ψ</div>
-          <div style={{fontSize:10,letterSpacing:2,color:"var(--gold)",textTransform:"uppercase",marginBottom:3}}>{t.years}</div>
+        <div key={key} onClick={()=>setWho(key)} style={{background:C.bg2,border:`1px solid ${C.border}`,borderRadius:'var(--radius)',padding:'20px',marginBottom:14,cursor:'pointer',position:'relative',overflow:'hidden'}}>
+          <div style={{position:'absolute',right:14,top:10,fontSize:52,opacity:.05,color:C.cream}}>Ψ</div>
+          <div style={{fontSize:10,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:3}}>{t.years}</div>
           <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,marginBottom:2}}>{t.name}</div>
-          <div style={{fontSize:11,color:"var(--cream2)",marginBottom:12}}>{t.role}</div>
-          <p style={{fontSize:15,fontStyle:"italic",fontFamily:"'Cormorant Garamond',serif",color:"var(--cream2)",marginBottom:14,lineHeight:1.6}}>"{t.intro.slice(0,100)}…"</p>
-          <span style={{fontSize:11,color:"var(--gold)",letterSpacing:1}}>Begin Session →</span>
+          <div style={{fontSize:11,color:C.cream2,marginBottom:12}}>{t.role}</div>
+          <p style={{fontSize:15,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:C.cream2,marginBottom:14,lineHeight:1.6}}>"{t.intro.slice(0,100)}…"</p>
+          <span style={{fontSize:11,color:C.gold,letterSpacing:1}}>Begin Session →</span>
         </div>
       ))}
-      <div style={{padding:"12px 14px",background:"rgba(192,57,43,0.08)",border:"1px solid rgba(192,57,43,0.2)",borderRadius:10,fontSize:11,color:"rgba(240,230,208,0.6)",lineHeight:1.6}}>
-        ⚠ These AI conversations are for educational and self-reflective purposes only. They do not constitute clinical therapy or medical advice.
+      <div style={{padding:'12px 14px',background:'rgba(192,57,43,0.08)',border:'1px solid rgba(192,57,43,0.2)',borderRadius:10,fontSize:11,color:'rgba(240,230,208,0.6)',lineHeight:1.6}}>
+        ⚠ Educational and self-reflective purposes only. Not clinical therapy or medical advice.
       </div>
     </div>
   );
-
   const t=THERAPISTS[who];
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{padding:"12px 16px",background:"var(--bg2)",borderBottom:"1px solid var(--border)",flexShrink:0,display:"flex",alignItems:"center",gap:12}}>
-        <button onClick={()=>{setWho(null);setMsgs([]);}} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:20,lineHeight:1}}>←</button>
-        <div>
-          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:17}}>{t.name}</div>
-          <div style={{fontSize:10,color:"var(--gold)",letterSpacing:1}}>{t.role}</div>
-        </div>
-        <div style={{marginLeft:"auto",width:8,height:8,borderRadius:"50%",background:"#2ecc71",boxShadow:"0 0 6px #2ecc71"}}/>
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div style={{padding:'12px 16px',background:C.bg2,borderBottom:`1px solid ${C.border}`,flexShrink:0,display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>{setWho(null);setMsgs([]);}} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:20}}>←</button>
+        <div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:17}}>{t.name}</div><div style={{fontSize:10,color:C.gold,letterSpacing:1}}>{t.role}</div></div>
+        <div style={{marginLeft:'auto',width:8,height:8,borderRadius:'50%',background:'#2ecc71',boxShadow:'0 0 6px #2ecc71'}}/>
       </div>
-      <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column',gap:14}}>
         {msgs.map((m,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
-            <div style={{maxWidth:"82%",padding:"12px 16px",borderRadius:16,background:m.role==="user"?"rgba(200,151,58,0.15)":"var(--bg2)",border:`1px solid ${m.role==="user"?"var(--border2)":"var(--border)"}`,borderBottomRightRadius:m.role==="user"?4:16,borderBottomLeftRadius:m.role==="assistant"?4:16}}>
-              {m.role==="assistant"&&<div style={{fontSize:9,letterSpacing:2,color:"var(--gold)",textTransform:"uppercase",marginBottom:6}}>{t.name}</div>}
-              <p style={{fontSize:m.role==="assistant"?16:14,color:"var(--cream)",lineHeight:1.7,fontFamily:m.role==="assistant"?"'Cormorant Garamond',serif":"'Jost',sans-serif",fontWeight:300}}>{m.content}</p>
+          <div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start'}}>
+            <div style={{maxWidth:'82%',padding:'12px 16px',borderRadius:16,background:m.role==='user'?'rgba(200,151,58,0.15)':C.bg2,border:`1px solid ${m.role==='user'?C.border2:C.border}`,borderBottomRightRadius:m.role==='user'?4:16,borderBottomLeftRadius:m.role==='assistant'?4:16}}>
+              {m.role==='assistant'&&<div style={{fontSize:9,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:6}}>{t.name}</div>}
+              <p style={{fontSize:m.role==='assistant'?16:14,color:C.cream,lineHeight:1.7,fontFamily:m.role==='assistant'?"'Cormorant Garamond',serif":"'Jost',sans-serif",fontWeight:300}}>{m.content}</p>
             </div>
           </div>
         ))}
-        {loading&&(
-          <div style={{display:"flex"}}>
-            <div style={{padding:"12px 20px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"16px 16px 16px 4px"}}>
-              <span style={{color:"var(--muted)",fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic",fontSize:15}}>Reflecting…</span>
-            </div>
-          </div>
-        )}
+        {loading&&<div style={{display:'flex'}}><div style={{padding:'12px 20px',background:C.bg2,border:`1px solid ${C.border}`,borderRadius:'16px 16px 16px 4px'}}><span style={{color:C.muted,fontFamily:"'Cormorant Garamond',serif",fontStyle:'italic',fontSize:15}}>Reflecting…</span></div></div>}
         <div ref={bottom}/>
       </div>
-      <div style={{padding:"12px 16px",background:"var(--bg2)",borderTop:"1px solid var(--border)",flexShrink:0,display:"flex",gap:10}}>
-        <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()}
-          placeholder={`Speak freely with ${t.name.split(" ")[1]}…`}
-          style={{flex:1,background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:24,padding:"11px 18px",color:"var(--cream)",fontFamily:"'Jost',sans-serif",fontSize:14}}/>
-        <button onClick={send} disabled={!inp.trim()||loading} style={{width:44,height:44,borderRadius:"50%",background:inp.trim()&&!loading?"var(--gold)":"var(--bg3)",border:"1px solid var(--border)",color:inp.trim()&&!loading?"var(--bg)":"var(--muted)",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .2s"}}>↑</button>
+      <div style={{padding:'12px 16px',background:C.bg2,borderTop:`1px solid ${C.border}`,flexShrink:0,display:'flex',gap:10}}>
+        <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&send()} placeholder={`Speak freely with ${t.name.split(' ')[1]}…`} style={{flex:1,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:24,padding:'11px 18px',color:C.cream,fontFamily:"'Jost',sans-serif",fontSize:14}}/>
+        <button onClick={send} disabled={!inp.trim()||loading} style={{width:44,height:44,borderRadius:'50%',background:inp.trim()&&!loading?C.gold:C.bg3,border:`1px solid ${C.border}`,color:inp.trim()&&!loading?C.bg:C.muted,fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s'}}>↑</button>
       </div>
     </div>
   );
 }
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
+/* ── APP ── */
 function App(){
-  const[tab,setTab]=useState("rituals");
+  const[tab,setTab]=useState('rituals');
   const[checks,setChecks]=useState({});
   const toggle=id=>setChecks(c=>({...c,[id]:!c[id]}));
-
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--bg)",color:"var(--cream)",fontFamily:"'Jost',sans-serif",overflow:"hidden"}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',background:C.bg,overflow:'hidden'}}>
       <AdBanner/>
-      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        {tab==="rituals"&&<div style={{flex:1,overflow:"hidden"}}><RitualsScreen checks={checks} toggle={toggle}/></div>}
-        {tab==="library"&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}><LibraryScreen/></div>}
-        {tab==="chat"&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}><ChatScreen/></div>}
+      <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+        {tab==='rituals'&&<div style={{flex:1,overflow:'hidden'}}><RitualsScreen checks={checks} toggle={toggle}/></div>}
+        {tab==='library'&&<div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}><LibraryScreen/></div>}
+        {tab==='chat'&&<div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}><ChatScreen/></div>}
       </div>
-      <div style={{display:"flex",borderTop:"1px solid var(--border)",background:"var(--bg2)",flexShrink:0}}>
-        {[{id:"rituals",label:"Rituals",icon:"◎"},{id:"library",label:"Library",icon:"◇"},{id:"chat",label:"Analysts",icon:"Ψ"}].map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"10px 4px 8px",cursor:"pointer",border:"none",background:"none",color:tab===t.id?"var(--gold)":"var(--muted)",fontFamily:"'Jost',sans-serif",fontSize:9,letterSpacing:"1.5px",textTransform:"uppercase",transition:"color .2s"}}>
-            <span style={{fontSize:18}}>{t.icon}</span>
-            {t.label}
+      <div style={{display:'flex',borderTop:`1px solid ${C.border}`,background:C.bg2,flexShrink:0}}>
+        {[{id:'rituals',label:'Rituals',icon:'◎'},{id:'library',label:'Library',icon:'◇'},{id:'chat',label:'Analysts',icon:'Ψ'}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3,padding:'10px 4px 8px',cursor:'pointer',border:'none',background:'none',color:tab===t.id?C.gold:C.muted,fontFamily:"'Jost',sans-serif",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',transition:'color .2s'}}>
+            <span style={{fontSize:18}}>{t.icon}</span>{t.label}
           </button>
         ))}
       </div>
     </div>
   );
 }
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
