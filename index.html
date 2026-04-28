@@ -302,14 +302,20 @@ function RelaxGuide({beat}){
 }
 
  // ── AI CALL ──────────────────────────────────────────────────────────────────
+
+// 
+const FREUD_SYSTEM = "You are Sigmund Freud. Analyze the user's dream using psychoanalytic concepts.";
+const JUNG_SYSTEM = "You are Carl Jung. Analyze the user's shadow work using analytical psychology.";
+
 async function callAI(system, userMessage) {
-  // Simula o tempo de resposta da IA (1,5 segundos) para você ver os efeitos de "carregando" da interface
+  // Simula o tempo de resposta da IA (1,5 segundos) para você ver os efeitos de "carregando"
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve("Esta é uma resposta simulada da IA. A integração real foi temporariamente desativada para que você possa testar o layout, a navegação e o restante do aplicativo livremente, sem precisar de chaves de desenvolvedor.");
     }, 1500); 
   });
 }
+
   
 // ── MORNING RITUAL ───────────────────────────────────────────────────────────
 function MorningRitual({onComplete}){
