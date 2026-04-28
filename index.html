@@ -2,89 +2,817 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>MindScape</title>
-
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond&family=Jost&display=swap" rel="stylesheet"/>
-
-<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
 <style>
-body{margin:0;background:#0d0c09;color:#f0e6d0;font-family:'Jost',sans-serif;}
-button{cursor:pointer}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body,#root{height:100%;overflow:hidden;}
+:root{
+  --bg:#0d0c09;--bg2:#161410;--bg3:#1e1b13;--bg4:#26221a;
+  --gold:#c8973a;--gold2:#e8b84b;--gold3:#f5d07a;
+  --cream:#f0e6d0;--cream2:#b8a98a;--muted:#5a5243;
+  --border:rgba(200,151,58,0.15);--border2:rgba(200,151,58,0.32);--border3:rgba(200,151,58,0.55);
+  --radius:14px;
+}
+body{background:var(--bg);color:var(--cream);font-family:'Jost',sans-serif;}
+textarea,input{font-family:'Jost',sans-serif;outline:none;}
+textarea{resize:none;}
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes glow{0%,100%{opacity:.35}50%{opacity:.9}}
+@keyframes orbit{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes coinPop{0%{transform:scale(0) rotate(-20deg);opacity:0}60%{transform:scale(1.3) rotate(5deg);opacity:1}100%{transform:scale(1) rotate(0deg);opacity:1}}
+@keyframes shimmer{0%,100%{opacity:.4}50%{opacity:1}}
 </style>
 </head>
-
 <body>
 <div id="root"></div>
-
 <script type="text/babel">
+const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
-const {useState, useEffect} = React;
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
+const C={
+  bg:'#0d0c09',bg2:'#161410',bg3:'#1e1b13',bg4:'#26221a',
+  gold:'#c8973a',gold2:'#e8b84b',gold3:'#f5d07a',
+  cream:'#f0e6d0',cream2:'#b8a98a',muted:'#5a5243',
+  border:'rgba(200,151,58,0.15)',border2:'rgba(200,151,58,0.32)',border3:'rgba(200,151,58,0.55)',
+};
 
-function speak(text){
-  if(!window.speechSynthesis) return;
-  const u = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices() || [];
-  if(voices.length) u.voice = voices[0];
-  window.speechSynthesis.speak(u);
+const MEDALS=[
+  {days:3,   title:'Incauto',      icon:'◌', desc:'The first step into the unknown.'},
+  {days:7,   title:'Iniciado',     icon:'◎', desc:'The ritual becomes habit.'},
+  {days:30,  title:'Adepto',       icon:'◇', desc:'One month of inner work.'},
+  {days:90,  title:'Cavaleiro',    icon:'✦', desc:'Three months of discipline.'},
+  {days:180, title:'Mestre',       icon:'⬡', desc:'Half a year of transformation.'},
+  {days:270, title:'Grande Mestre',icon:'✸', desc:'Nine months — a gestation complete.'},
+  {days:365, title:'Lacan',        icon:'Ω', desc:'One year. Language reshapes the self.'},
+  {days:730, title:'Frankl',       icon:'◈', desc:'Two years. Meaning found in everything.'},
+  {days:1095,title:'Freud',        icon:'Ψ', desc:'Three years. The unconscious is yours.'},
+  {days:1825,title:'Jung',         icon:'☽', desc:'Five years. You have become whole.'},
+];
+
+const ADS=[
+  {text:"BetterHelp — Professional therapy, online. Start your journey today.",cta:"Try Free"},
+  {text:"Headspace — Guided meditation for a calmer mind. 14-day free trial.",cta:"Learn More"},
+  {text:"Calm — Sleep stories, breathing exercises, and mindfulness.",cta:"Get Calm"},
+  {text:"Insight Timer — 100,000+ free meditations. Join 25 million users.",cta:"Explore"},
+];
+
+// ── AUDIO ENGINE ────────────────────────────────────────────────────────────
+function makeAmbient(){
+  let ctx=null,nodes=[],active=false;
+  const start=()=>{
+    if(active)return;
+    try{
+      ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const m=ctx.createGain();m.gain.value=0.055;m.connect(ctx.destination);
+      [[174.6,0],[261.6,.5],[349.2,1],[523.2,1.6]].forEach(([f,d])=>{
+        const o=ctx.createOscillator(),g=ctx.createGain();
+        o.type='sine';o.frequency.value=f;g.gain.value=.5;
+        o.connect(g);g.connect(m);o.start(ctx.currentTime+d);nodes.push(o);
+      });active=true;
+    }catch{}
+  };
+  const stop=()=>{
+    if(!active)return;
+    nodes.forEach(n=>{try{n.stop();n.disconnect();}catch{}});
+    nodes=[];try{ctx?.close();}catch{}ctx=null;active=false;
+  };
+  return{start,stop,isActive:()=>active};
 }
 
-function App(){
+function speak(text,rate=0.88,pitch=0.92){
+  if(!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=rate;u.pitch=pitch;u.volume=0.9;
+  const voices=speechSynthesis.getVoices();
+  const en=voices.find(v=>v.lang.startsWith('en')&&v.name.toLowerCase().includes('male'))
+    ||voices.find(v=>v.lang.startsWith('en'))||voices[0];
+  if(en)u.voice=en;
+  speechSynthesis.speak(u);
+}
 
-  const [step,setStep] = useState("start");
-  const [dream,setDream] = useState("");
-  const [response,setResponse] = useState("");
+// ── STORAGE HELPERS ─────────────────────────────────────────────────────────
+const LS={
+  get:(k,def=null)=>{try{const v=localStorage.getItem(k);return v!=null?JSON.parse(v):def;}catch{return def;}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}},
+};
 
-  function start(){
-    speak("Inhale... hold... exhale...");
-    setStep("dream");
-  }
-
-  function interpret(){
-    setResponse("This is a simulated response from Freud. Your unconscious is speaking in symbols.");
-    setStep("done");
-  }
+// ── VITRUVIAN AVATAR ────────────────────────────────────────────────────────
+function VitruvianAvatar({highlight='none',phase='idle',animate=true}){
+  const hlMap={
+    feet:[[55,185,90,185]],calves:[[55,165,90,165]],
+    thighs:[[52,145,88,145]],abdomen:[[60,118,60,118]],
+    chest:[[60,100,60,100]],shoulders:[[38,88,82,88]],
+    arms:[[28,110,92,110]],face:[[60,44,60,44]],
+    all:[[60,120]],
+  };
+  const hlPts=hlMap[highlight]||[];
 
   return(
-    <div style={{padding:20}}>
+    <svg width="200" height="240" viewBox="0 0 200 240" style={{filter:'drop-shadow(0 0 8px rgba(200,151,58,0.12))'}}>
+      <defs>
+        <radialGradient id="vbg" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgba(200,151,58,0.06)"/>
+          <stop offset="100%" stopColor="rgba(200,151,58,0)"/>
+        </radialGradient>
+      </defs>
 
-      <h1>MindScape</h1>
+      {/* Outer circle */}
+      <circle cx="100" cy="115" r="88" fill="url(#vbg)" stroke={C.border2} strokeWidth="0.8" strokeDasharray="4 6"/>
+      {/* Inner square */}
+      <rect x="30" y="30" width="140" height="168" fill="none" stroke={C.border} strokeWidth="0.6" strokeDasharray="3 5"/>
+      {/* Radial guide lines */}
+      {[0,45,90,135].map(a=>(
+        <line key={a}
+          x1={100+88*Math.cos(a*Math.PI/180)} y1={115+88*Math.sin(a*Math.PI/180)}
+          x2={100-88*Math.cos(a*Math.PI/180)} y2={115-88*Math.sin(a*Math.PI/180)}
+          stroke={C.border} strokeWidth="0.4"/>
+      ))}
 
-      {step==="start" && (
-        <div>
-          <p>Start your morning ritual.</p>
-          <button onClick={start}>Begin</button>
-        </div>
+      {/* ── FIGURE ── */}
+      {/* Head */}
+      <circle cx="100" cy="44" r="18"
+        fill="none" stroke={highlight==='face'?C.gold:C.cream2} strokeWidth={highlight==='face'?2:1.4}
+        style={highlight==='face'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      {/* Eyes */}
+      <circle cx="93" cy="42" r="2" fill={C.gold} opacity=".6"/>
+      <circle cx="107" cy="42" r="2" fill={C.gold} opacity=".6"/>
+      {/* Nose bridge */}
+      <line x1="100" y1="44" x2="100" y2="50" stroke={C.cream2} strokeWidth="0.8" opacity=".5"/>
+
+      {/* Neck */}
+      <line x1="100" y1="62" x2="100" y2="72" stroke={C.cream2} strokeWidth="1.4"/>
+
+      {/* Shoulders */}
+      <line x1="66" y1="80" x2="134" y2="80"
+        stroke={highlight==='shoulders'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='shoulders'?2.5:1.4}
+        style={highlight==='shoulders'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+
+      {/* Collar bones */}
+      <line x1="100" y1="72" x2="66" y2="80" stroke={C.cream2} strokeWidth="1.2" opacity=".7"/>
+      <line x1="100" y1="72" x2="134" y2="80" stroke={C.cream2} strokeWidth="1.2" opacity=".7"/>
+
+      {/* Torso */}
+      <line x1="100" y1="80" x2="100" y2="138" stroke={C.cream2} strokeWidth="1.6"/>
+      {/* Chest outline */}
+      <ellipse cx="100" cy="95" rx="24" ry="16" fill="none"
+        stroke={highlight==='chest'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='chest'?2:0.9} opacity=".7"
+        style={highlight==='chest'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      {/* Abdomen outline */}
+      <ellipse cx="100" cy="118" rx="18" ry="14" fill="none"
+        stroke={highlight==='abdomen'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='abdomen'?2:0.8} opacity=".6"
+        style={highlight==='abdomen'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+
+      {/* ── ARMS (two positions: natural + spread) ── */}
+      {/* Upper arms */}
+      <line x1="66" y1="80" x2="40" y2="110" stroke={C.cream2} strokeWidth="1.4"/>
+      <line x1="134" y1="80" x2="160" y2="110" stroke={C.cream2} strokeWidth="1.4"/>
+      {/* Forearms */}
+      <line x1="40" y1="110" x2="24" y2="138"
+        stroke={highlight==='arms'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='arms'?2.5:1.4}
+        style={highlight==='arms'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      <line x1="160" y1="110" x2="176" y2="138"
+        stroke={highlight==='arms'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='arms'?2.5:1.4}
+        style={highlight==='arms'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      {/* Hands */}
+      <circle cx="24" cy="140" r="3" fill="none" stroke={C.cream2} strokeWidth="1"/>
+      <circle cx="176" cy="140" r="3" fill="none" stroke={C.cream2} strokeWidth="1"/>
+
+      {/* Spread arms (Vitruvian second pose, faint) */}
+      <line x1="66" y1="90" x2="20" y2="90" stroke={C.cream2} strokeWidth="0.7" opacity=".25"/>
+      <line x1="134" y1="90" x2="180" y2="90" stroke={C.cream2} strokeWidth="0.7" opacity=".25"/>
+
+      {/* Pelvis */}
+      <line x1="72" y1="138" x2="128" y2="138" stroke={C.cream2} strokeWidth="1.2"/>
+
+      {/* ── LEGS ── */}
+      {/* Upper legs */}
+      <line x1="86" y1="138" x2="78" y2="175"
+        stroke={highlight==='thighs'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='thighs'?2.5:1.4}
+        style={highlight==='thighs'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      <line x1="114" y1="138" x2="122" y2="175"
+        stroke={highlight==='thighs'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='thighs'?2.5:1.4}
+        style={highlight==='thighs'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      {/* Lower legs */}
+      <line x1="78" y1="175" x2="74" y2="212"
+        stroke={highlight==='calves'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='calves'?2.5:1.4}
+        style={highlight==='calves'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      <line x1="122" y1="175" x2="126" y2="212"
+        stroke={highlight==='calves'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='calves'?2.5:1.4}
+        style={highlight==='calves'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      {/* Feet */}
+      <ellipse cx="70" cy="214" rx="10" ry="4" fill="none"
+        stroke={highlight==='feet'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='feet'?2:1}
+        style={highlight==='feet'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+      <ellipse cx="130" cy="214" rx="10" ry="4" fill="none"
+        stroke={highlight==='feet'||highlight==='all'?C.gold:C.cream2}
+        strokeWidth={highlight==='feet'?2:1}
+        style={highlight==='feet'?{animation:'glow 1.2s ease-in-out infinite'}:{}}/>
+
+      {/* Phi proportion lines */}
+      <line x1="100" y1="30" x2="100" y2="220" stroke={C.border} strokeWidth="0.4" opacity=".5"/>
+      <line x1="20" y1="115" x2="180" y2="115" stroke={C.border} strokeWidth="0.4" opacity=".5"/>
+
+      {/* Highlight pulse circle for active area */}
+      {highlight!=='none'&&highlight!=='idle'&&(
+        <circle cx="100" cy="115" r="90"
+          fill="none" stroke={C.gold} strokeWidth="0.6"
+          style={{animation:'glow 2s ease-in-out infinite'}} opacity=".15"/>
       )}
+    </svg>
+  );
+}
 
-      {step==="dream" && (
-        <div>
-          <p>Describe your dream:</p>
-          <textarea 
-            value={dream}
-            onChange={e=>setDream(e.target.value)}
-            rows={3}
-            style={{width:"100%"}}
-          />
-          <button onClick={interpret}>Interpret</button>
+// ── BREATH VISUAL ────────────────────────────────────────────────────────────
+function BreathCircle({phase}){
+  const sizes={inhale:78,hold:78,exhale:44};
+  const sz=sizes[phase]||56;
+  return(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:16,padding:'10px 0'}}>
+      <div style={{position:'relative',width:160,height:160,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {[0,1,2].map(i=>(
+          <div key={i} style={{position:'absolute',width:(sz+i*26)+'px',height:(sz+i*26)+'px',borderRadius:'50%',border:`${i===0?1.5:.8}px solid ${C.gold}`,opacity:.08+i*.07,transition:'all 1.6s cubic-bezier(.4,0,.2,1)'}}/>
+        ))}
+        <div style={{width:sz,height:sz,borderRadius:'50%',background:'rgba(200,151,58,0.08)',border:`1.5px solid ${C.gold}`,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:2,transition:'all 1.6s cubic-bezier(.4,0,.2,1)'}}>
+          <span style={{fontSize:10,letterSpacing:2.5,color:C.gold,textTransform:'uppercase'}}>
+            {phase==='inhale'?'Inhale':phase==='hold'?'Hold':'Exhale'}
+          </span>
         </div>
-      )}
-
-      {step==="done" && (
-        <div>
-          <p>{response}</p>
-        </div>
-      )}
-
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,width:'90%'}}>
+        {[['Inhale','4'],['Hold','7'],['Exhale','8']].map(([l,n])=>(
+          <div key={l} style={{textAlign:'center',padding:'8px 4px',background:phase.includes(l.toLowerCase())?'rgba(200,151,58,0.1)':C.bg3,border:`1px solid ${phase.includes(l.toLowerCase())?C.border2:C.border}`,borderRadius:10,transition:'all .5s'}}>
+            <div style={{fontSize:10,color:phase.includes(l.toLowerCase())?C.gold:C.muted,letterSpacing:.5}}>{l}</div>
+            <div style={{fontSize:20,color:C.cream,fontFamily:"'Cormorant Garamond',serif"}}>{n}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+// ── PROGRESSIVE RELAXATION GUIDE ────────────────────────────────────────────
+const RELAX_PARTS=[
+  {id:'feet',   label:'Feet',    cue:'Curl your toes tightly… hold… and release.'},
+  {id:'calves', label:'Calves',  cue:'Flex your calves… hold… and release.'},
+  {id:'thighs', label:'Thighs',  cue:'Tense your thighs… hold… and release.'},
+  {id:'abdomen',label:'Abdomen', cue:'Pull your abdomen in… hold… and release.'},
+  {id:'chest',  label:'Chest',   cue:'Breathe in and hold your chest… now exhale and release.'},
+  {id:'shoulders',label:'Shoulders',cue:'Raise your shoulders to your ears… hold… and drop.'},
+  {id:'arms',   label:'Arms',    cue:'Tense your arms and fists… hold… and release.'},
+  {id:'face',   label:'Face',    cue:'Scrunch your face tightly… hold… and relax completely.'},
+];
 
+function RelaxGuide({beat}){
+  const idx=Math.min(Math.floor(beat/3),RELAX_PARTS.length-1);
+  const part=RELAX_PARTS[idx];
+  return(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
+      <VitruvianAvatar highlight={part.id}/>
+      <div style={{textAlign:'center'}}>
+        <div style={{fontSize:14,color:C.gold,letterSpacing:1,marginBottom:4}}>{part.label}</div>
+        <div style={{fontSize:12,color:C.cream2,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",fontSize:15,lineHeight:1.6}}>{part.cue}</div>
+        <div style={{display:'flex',gap:4,justifyContent:'center',marginTop:10}}>
+          {RELAX_PARTS.map((_,i)=>(
+            <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?C.gold:i<idx?C.muted:C.bg4,transition:'all .4s'}}/>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AI CALL ──────────────────────────────────────────────────────────────────
+async function callAI(system,userMessage){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:700,
+      system,
+      messages:[{role:'user',content:userMessage}],
+    }),
+  });
+  const data=await res.json();
+  return data.content?.map(b=>b.text||'').join('')||'';
+}
+
+const JUNG_SYSTEM=`You are Carl Gustav Jung, speaking in the first person. The user has just completed their evening Shadow Journal — a structured reflection on what disturbed them today and what it reveals about themselves. Read their responses and offer a brief, warm, penetrating Jungian reflection — 2 to 3 paragraphs. Draw naturally on your concepts: the Shadow, projection, integration, the unconscious, individuation, the Self. Do not lecture. Speak as a wise companion who sees deeply. End with a single question that invites further reflection. Sign as: — Jung`;
+
+const FREUD_SYSTEM=`You are Sigmund Freud, speaking in the first person. The user has briefly described a dream from last night. Offer a Freudian interpretation — 2 to 3 paragraphs. Draw on your actual concepts: wish fulfillment, the unconscious, latent vs manifest content, symbolism, repression, the id. Be precise, slightly formal, but warm. Do not ask follow-up questions. Give a confident interpretation, noting any symbols or patterns. End with: — Freud`;
+
+// ── MORNING RITUAL ───────────────────────────────────────────────────────────
+function MorningRitual({onComplete}){
+  const[step,setStep]=useState('intro'); // intro | dream | breathwork | done
+  const[dream,setDream]=useState('');
+  const[freudReply,setFreudReply]=useState('');
+  const[loading,setLoading]=useState(false);
+  const[breathPhase,setBreathPhase]=useState('inhale');
+  const[breathCount,setBreathCount]=useState(0);
+  const[beat,setBeat]=useState(0);
+  const[soundOn,setSoundOn]=useState(true);
+  const breathRef=useRef(null);
+  const beatRef=useRef(null);
+  const audioRef=useRef(null);
+
+  useEffect(()=>{audioRef.current=makeAmbient();return()=>{audioRef.current.stop();clearInterval(breathRef.current);clearInterval(beatRef.current);window.speechSynthesis?.cancel();};},[]);
+
+  const startBreath=()=>{
+    setStep('breathwork');
+    if(soundOn)audioRef.current.start();
+    const seq=[
+      {p:'inhale',t:4,cue:'Inhale slowly… one… two… three… four…'},
+      {p:'hold',t:7,cue:'Hold… one… two… three… four… five… six… seven…'},
+      {p:'exhale',t:8,cue:'Exhale… slowly… one… two… three… four… five… six… seven… eight…'},
+    ];
+    let cycle=0,si=0,tick=0;
+    const run=()=>{
+      const cur=seq[si];
+      if(tick===0){setBreathPhase(cur.p);if(soundOn)speak(cur.cue,.75,.9);}
+      tick++;
+      if(tick>=cur.t){
+        tick=0;si=(si+1)%seq.length;
+        if(si===0){cycle++;setBreathCount(cycle);}
+        if(cycle>=4){clearInterval(breathRef.current);clearInterval(beatRef.current);audioRef.current.stop();setStep('dream');}
+      }
+    };
+    breathRef.current=setInterval(run,1000);
+    beatRef.current=setInterval(()=>setBeat(b=>b+1),2000);
+  };
+
+  const submitDream=async()=>{
+    if(!dream.trim())return;
+    setLoading(true);setStep('freud');
+    try{
+      const reply=await callAI(FREUD_SYSTEM,`My dream last night: "${dream}"`);
+      setFreudReply(reply||'The unconscious speaks in symbols we are not yet ready to hear. Return to this dream tonight.');
+    }catch{setFreudReply('The connection to the unconscious was interrupted. Try again, or simply sit with the image your dream left behind.');}
+    setLoading(false);
+  };
+
+  const finish=()=>{onComplete('morning');};
+
+  const card=(children,extra={})=>(
+    <div style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'20px',animation:'fadeUp .4s ease',...extra}}>
+      {children}
+    </div>
+  );
+
+  return(
+    <div style={{height:'100%',overflowY:'auto',padding:'20px 18px 100px'}}>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Morning Ritual</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300,color:C.cream}}>☀ Awakening Practice</div>
+        <p style={{fontSize:13,color:C.cream2,marginTop:5,lineHeight:1.6}}>Begin with the breath. Then bring what the night left behind.</p>
+      </div>
+
+      {step==='intro'&&card(
+        <div style={{textAlign:'center',padding:'10px 0'}}>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:42,color:C.gold,marginBottom:16,opacity:.5}}>◎</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:C.cream,marginBottom:10}}>4 · 7 · 8 Breathwork</div>
+          <p style={{fontSize:14,color:C.cream2,lineHeight:1.7,marginBottom:20,fontFamily:"'Cormorant Garamond',serif",fontStyle:'italic',fontSize:16}}>Four complete cycles. Inhale four, hold seven, exhale eight. This one practice activates the parasympathetic nervous system — the body's own off switch for stress.</p>
+          <p style={{fontSize:12,color:C.muted,marginBottom:24}}>Audio guidance will lead each breath.</p>
+          <button onClick={startBreath} style={{padding:'14px 44px',background:C.gold,border:'none',borderRadius:30,color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1,cursor:'pointer',fontWeight:500}}>
+            Begin Breathwork
+          </button>
+        </div>
+      )}
+
+      {step==='breathwork'&&card(
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <div style={{fontSize:11,color:C.muted}}>Cycle {breathCount+1} of 4</div>
+            <button onClick={()=>{setSoundOn(s=>!s);if(soundOn)audioRef.current.stop();else audioRef.current.start();}} style={{fontSize:11,color:soundOn?C.gold:C.muted,background:'none',border:`1px solid ${C.border}`,padding:'3px 12px',borderRadius:20,cursor:'pointer'}}>
+              ♪ {soundOn?'On':'Off'}
+            </button>
+          </div>
+          <BreathCircle phase={breathPhase}/>
+        </div>
+      )}
+
+      {step==='dream'&&card(
+        <div>
+          <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Sigmund Freud</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:C.cream,marginBottom:6}}>Dream Analysis</div>
+          <p style={{fontSize:14,color:C.cream2,lineHeight:1.7,marginBottom:16,fontFamily:"'Cormorant Garamond',serif",fontStyle:'italic',fontSize:16}}>"Dreams are the royal road to the unconscious."</p>
+          <p style={{fontSize:13,color:C.cream2,marginBottom:12,lineHeight:1.6}}>Do you remember what you dreamed? Describe it in <strong style={{color:C.cream}}>one sentence</strong> — the image, feeling, or fragment that stayed with you.</p>
+          <textarea
+            value={dream}
+            onChange={e=>setDream(e.target.value)}
+            placeholder="Last night I dreamed that…"
+            rows={3}
+            style={{width:'100%',background:C.bg3,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 14px',color:C.cream,fontSize:16,lineHeight:1.7,fontFamily:"'Cormorant Garamond',serif",marginBottom:12}}
+          />
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={()=>{setStep('done');onComplete('morning');}} style={{flex:1,padding:'10px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:24,color:C.muted,fontFamily:"'Jost',sans-serif",fontSize:12,cursor:'pointer'}}>
+              I don't recall a dream
+            </button>
+            <button onClick={submitDream} disabled={!dream.trim()} style={{flex:2,padding:'10px',background:dream.trim()?C.gold:'transparent',border:`1px solid ${dream.trim()?C.gold:C.border}`,borderRadius:24,color:dream.trim()?C.bg:C.muted,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:dream.trim()?'pointer':'default',letterSpacing:.5,fontWeight:500}}>
+              Interpret with Freud →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step==='freud'&&card(
+        <div>
+          <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Freud's Interpretation</div>
+          <div style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 14px',marginBottom:14,fontStyle:'italic',color:C.cream2,fontSize:15,fontFamily:"'Cormorant Garamond',serif",lineHeight:1.6}}>
+            "{dream}"
+          </div>
+          {loading?(
+            <div style={{textAlign:'center',padding:'30px 0',color:C.muted,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",fontSize:16}}>
+              <div style={{fontSize:28,marginBottom:12,animation:'shimmer 1.5s ease-in-out infinite'}}>Ψ</div>
+              Freud is considering your dream…
+            </div>
+          ):(
+            <div>
+              <p style={{fontSize:16,color:C.cream,lineHeight:1.8,fontFamily:"'Cormorant Garamond',serif",marginBottom:20,whiteSpace:'pre-wrap'}}>{freudReply}</p>
+              <button onClick={finish} style={{width:'100%',padding:'12px',background:C.gold,border:'none',borderRadius:24,color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',fontWeight:500,letterSpacing:.5}}>
+                Complete Morning Ritual ✦
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step==='done'&&card(
+        <div style={{textAlign:'center',padding:'10px 0'}}>
+          <div style={{fontSize:44,color:C.gold,marginBottom:12,animation:'pulse 1.2s ease 3'}}>✦</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:C.gold,marginBottom:8}}>Morning Complete</div>
+          <p style={{fontSize:14,color:C.cream2,lineHeight:1.7,fontFamily:"'Cormorant Garamond',serif",fontStyle:'italic',fontSize:16}}>Your nervous system is calmer. Your unconscious has been heard. Go forward with intention.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── EVENING RITUAL ───────────────────────────────────────────────────────────
+const SHADOW_QUESTIONS=[
+  {key:'bothered',q:'What bothered or unsettled you today?',placeholder:'Something happened today that I couldn't shake…',cue:'Let it surface without judgment. What stayed with you?'},
+  {key:'why',q:'Why do you think this happened?',placeholder:'I think it happened because…',cue:'Go beneath the surface. What patterns do you notice?'},
+  {key:'says',q:'What does this say about you?',placeholder:'This reveals that I…',cue:'Jung called this the Shadow. What part of you is speaking?'},
+  {key:'opportunity',q:'How could this be an opportunity?',placeholder:'I could use this to…',cue:'Every shadow contains a gift. What is yours?'},
+];
+
+function EveningRitual({onComplete}){
+  const[step,setStep]=useState('intro'); // intro | shadow | jung | relax | done
+  const[qIdx,setQIdx]=useState(0);
+  const[answers,setAnswers]=useState({});
+  const[loading,setLoading]=useState(false);
+  const[jungReply,setJungReply]=useState('');
+  const[beat,setBeat]=useState(0);
+  const[soundOn,setSoundOn]=useState(true);
+  const beatRef=useRef(null);
+  const audioRef=useRef(null);
+
+  useEffect(()=>{audioRef.current=makeAmbient();return()=>{audioRef.current.stop();clearInterval(beatRef.current);window.speechSynthesis?.cancel();};},[]);
+
+  const startRelax=()=>{
+    setStep('relax');
+    if(soundOn)audioRef.current.start();
+    speak('We begin progressive relaxation. Follow the body guide. Tense each area for five seconds, then fully release.',.82,.9);
+    let b=0;
+    beatRef.current=setInterval(()=>{
+      b++;setBeat(b);
+      const idx=Math.min(Math.floor(b/3),RELAX_PARTS.length-1);
+      if(b%3===0&&b>0){speak(RELAX_PARTS[idx].cue,.82,.9);}
+      if(b>=RELAX_PARTS.length*3+2){clearInterval(beatRef.current);audioRef.current.stop();speak('Beautiful. Your body is at rest. Sleep well.',.8,.88);setTimeout(()=>setStep('done'),3000);}
+    },3500);
+  };
+
+  const nextQ=()=>{
+    if(qIdx<SHADOW_QUESTIONS.length-1)setQIdx(q=>q+1);
+    else submitShadow();
+  };
+
+  const submitShadow=async()=>{
+    setLoading(true);setStep('jung');
+    const prompt=SHADOW_QUESTIONS.map(q=>`${q.q}\n${answers[q.key]||'(no answer)'}`).join('\n\n');
+    try{
+      const reply=await callAI(JUNG_SYSTEM,prompt);
+      setJungReply(reply||'The shadow you have named tonight is the beginning of integration. Sit with what arose. We will continue tomorrow.');
+    }catch{setJungReply('The unconscious is rarely in a hurry. What you have named tonight is already beginning to transform. Return to these words tomorrow.');}
+    setLoading(false);
+  };
+
+  const curQ=SHADOW_QUESTIONS[qIdx];
+
+  return(
+    <div style={{height:'100%',overflowY:'auto',padding:'20px 18px 100px'}}>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Evening Ritual</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300,color:C.cream}}>☽ Night Practice</div>
+        <p style={{fontSize:13,color:C.cream2,marginTop:5,lineHeight:1.6}}>Shadow work with Jung. Progressive relaxation with Jacobson.</p>
+      </div>
+
+      {step==='intro'&&(
+        <div style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'20px',animation:'fadeUp .4s ease',textAlign:'center'}}>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:42,color:C.gold,opacity:.4,marginBottom:12}}>☽</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:C.cream,marginBottom:10}}>Shadow Journal</div>
+          <p style={{fontSize:16,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:C.cream2,lineHeight:1.7,marginBottom:20}}>"Until you make the unconscious conscious, it will direct your life and you will call it fate."</p>
+          <p style={{fontSize:12,color:C.muted,marginBottom:24}}>Four questions. Jung will read your answers and respond.</p>
+          <button onClick={()=>setStep('shadow')} style={{padding:'14px 44px',background:C.gold,border:'none',borderRadius:30,color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1,cursor:'pointer',fontWeight:500}}>
+            Open the Shadow Journal
+          </button>
+        </div>
+      )}
+
+      {step==='shadow'&&(
+        <div style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'20px',animation:'fadeIn .3s ease'}}>
+          {/* Progress dots */}
+          <div style={{display:'flex',gap:6,justifyContent:'center',marginBottom:20}}>
+            {SHADOW_QUESTIONS.map((_,i)=>(
+              <div key={i} style={{width:7,height:7,borderRadius:'50%',background:i===qIdx?C.gold:i<qIdx?C.muted:C.bg4,border:`1px solid ${i<=qIdx?C.gold:C.border}`,transition:'all .3s'}}/>
+            ))}
+          </div>
+          <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:6}}>Question {qIdx+1} of {SHADOW_QUESTIONS.length}</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,color:C.cream,marginBottom:6,lineHeight:1.4}}>{curQ.q}</div>
+          <p style={{fontSize:13,color:C.muted,marginBottom:14,fontStyle:'italic'}}>{curQ.cue}</p>
+          <textarea
+            key={qIdx}
+            value={answers[curQ.key]||''}
+            onChange={e=>setAnswers(a=>({...a,[curQ.key]:e.target.value}))}
+            placeholder={curQ.placeholder}
+            rows={4}
+            autoFocus
+            style={{width:'100%',background:C.bg3,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 14px',color:C.cream,fontSize:16,lineHeight:1.8,fontFamily:"'Cormorant Garamond',serif",marginBottom:14}}
+          />
+          <div style={{display:'flex',gap:10}}>
+            {qIdx>0&&<button onClick={()=>setQIdx(q=>q-1)} style={{padding:'10px 20px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:24,color:C.muted,fontFamily:"'Jost',sans-serif",fontSize:12,cursor:'pointer'}}>← Back</button>}
+            <button onClick={nextQ} disabled={!(answers[curQ.key]||'').trim()} style={{flex:1,padding:'10px',background:(answers[curQ.key]||'').trim()?C.gold:'transparent',border:`1px solid ${(answers[curQ.key]||'').trim()?C.gold:C.border}`,borderRadius:24,color:(answers[curQ.key]||'').trim()?C.bg:C.muted,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:(answers[curQ.key]||'').trim()?'pointer':'default',fontWeight:500}}>
+              {qIdx<SHADOW_QUESTIONS.length-1?'Next Question →':'Send to Jung →'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step==='jung'&&(
+        <div style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'20px',animation:'fadeIn .3s ease'}}>
+          <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Jung's Response</div>
+          {loading?(
+            <div style={{textAlign:'center',padding:'30px 0'}}>
+              <div style={{fontSize:32,color:C.gold,marginBottom:12,animation:'shimmer 1.5s ease-in-out infinite'}}>☽</div>
+              <p style={{fontSize:16,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:C.muted}}>Jung is reading your shadow…</p>
+            </div>
+          ):(
+            <div>
+              <p style={{fontSize:16,color:C.cream,lineHeight:1.85,fontFamily:"'Cormorant Garamond',serif",marginBottom:20,whiteSpace:'pre-wrap'}}>{jungReply}</p>
+              <button onClick={startRelax} style={{width:'100%',padding:'12px',background:C.gold,border:'none',borderRadius:24,color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',fontWeight:500}}>
+                Continue to Body Relaxation →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step==='relax'&&(
+        <div style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'20px',animation:'fadeIn .3s ease'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <div>
+              <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:2}}>Edmund Jacobson</div>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:C.cream}}>Progressive Relaxation</div>
+            </div>
+            <button onClick={()=>{setSoundOn(s=>!s);if(soundOn)audioRef.current.stop();else audioRef.current.start();}} style={{fontSize:11,color:soundOn?C.gold:C.muted,background:'none',border:`1px solid ${C.border}`,padding:'3px 12px',borderRadius:20,cursor:'pointer'}}>
+              ♪ {soundOn?'On':'Off'}
+            </button>
+          </div>
+          <RelaxGuide beat={beat}/>
+        </div>
+      )}
+
+      {step==='done'&&(
+        <div style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'20px',textAlign:'center',animation:'fadeUp .4s ease'}}>
+          <div style={{fontSize:44,color:C.gold,marginBottom:12,animation:'pulse 1.2s ease 3'}}>☽</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:C.gold,marginBottom:8}}>Evening Complete</div>
+          <p style={{fontSize:16,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:C.cream2,lineHeight:1.7}}>Your shadow has been witnessed. Your body is at rest. Sleep is the deepest form of trust.</p>
+          <button onClick={()=>onComplete('evening')} style={{marginTop:20,padding:'12px 32px',background:C.gold,border:'none',borderRadius:24,color:C.bg,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',fontWeight:500}}>
+            Complete Evening Ritual ✦
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── PROGRESS SCREEN ──────────────────────────────────────────────────────────
+function ProgressScreen({streak,franckls,unlockedMedals}){
+  const[showStore,setShowStore]=useState(false);
+  const nextMedal=MEDALS.find(m=>!unlockedMedals.includes(m.title));
+  const lastMedal=MEDALS.filter(m=>unlockedMedals.includes(m.title)).pop();
+
+  return(
+    <div style={{height:'100%',overflowY:'auto',padding:'20px 18px 100px'}}>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:'uppercase',marginBottom:4}}>Your Journey</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300,color:C.cream}}>Progress & Rank</div>
+      </div>
+
+      {/* Stats row */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+        {[
+          {label:'Day Streak',value:streak+'🔥',sub:'consecutive days'},
+          {label:'Franckls',value:'₣'+franckls,sub:franckls>=100?'Ready to redeem!':'₣100 = store item'},
+        ].map(s=>(
+          <div key={s.label} style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'16px 14px',textAlign:'center'}}>
+            <div style={{fontSize:9,letterSpacing:2,color:C.muted,textTransform:'uppercase',marginBottom:6}}>{s.label}</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:C.gold}}>{s.value}</div>
+            <div style={{fontSize:10,color:C.muted,marginTop:4}}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Current rank */}
+      {lastMedal&&(
+        <div style={{background:'rgba(200,151,58,0.06)',border:`1px solid ${C.border2}`,borderRadius:'var(--radius)',padding:'16px',marginBottom:16,textAlign:'center'}}>
+          <div style={{fontSize:9,letterSpacing:2,color:C.muted,textTransform:'uppercase',marginBottom:4}}>Current Rank</div>
+          <div style={{fontSize:48,marginBottom:6}}>{lastMedal.icon}</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:C.gold}}>{lastMedal.title}</div>
+          <div style={{fontSize:12,color:C.cream2,marginTop:4,fontStyle:'italic'}}>{lastMedal.desc}</div>
+        </div>
+      )}
+
+      {/* Next medal */}
+      {nextMedal&&(
+        <div style={{background:C.bg2,border:`1px solid ${C.border}`,borderRadius:'var(--radius)',padding:'14px',marginBottom:16}}>
+          <div style={{fontSize:9,letterSpacing:2,color:C.muted,textTransform:'uppercase',marginBottom:6}}>Next Rank</div>
+          <div style={{display:'flex',alignItems:'center',gap:14}}>
+            <div style={{fontSize:36,opacity:.5}}>{nextMedal.icon}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:C.cream}}>{nextMedal.title}</div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:6}}>{nextMedal.days - streak} more days</div>
+              <div style={{height:3,background:C.bg3,borderRadius:3}}>
+                <div style={{height:'100%',width:Math.min(streak/nextMedal.days*100,100)+'%',background:C.gold,borderRadius:3,transition:'width .5s'}}/>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* All medals */}
+      <div style={{fontSize:11,letterSpacing:2,color:C.muted,textTransform:'uppercase',marginBottom:12}}>All Ranks</div>
+      <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
+        {MEDALS.map(m=>{
+          const unlocked=unlockedMedals.includes(m.title);
+          return(
+            <div key={m.title} style={{display:'flex',alignItems:'center',gap:12,background:unlocked?'rgba(200,151,58,0.06)':C.bg2,border:`1px solid ${unlocked?C.border2:C.border}`,borderRadius:10,padding:'12px 14px',opacity:unlocked?1:.55,transition:'all .3s'}}>
+              <div style={{fontSize:22,width:32,textAlign:'center',filter:unlocked?'none':'grayscale(1)'}}>{m.icon}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:unlocked?C.gold:C.cream2}}>{m.title}</div>
+                <div style={{fontSize:11,color:C.muted}}>{m.days} days · {m.desc}</div>
+              </div>
+              {unlocked&&<div style={{fontSize:10,color:C.gold,border:`1px solid ${C.border2}`,padding:'2px 8px',borderRadius:10}}>✦ Unlocked</div>}
+              {!unlocked&&<div style={{fontSize:10,color:C.muted}}>+₣10</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Store teaser */}
+      <div style={{background:C.bg2,border:`1px solid ${C.border}`,borderRadius:'var(--radius)',padding:'16px',textAlign:'center'}}>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:C.cream,marginBottom:6}}>◈ Franckls Store</div>
+        <p style={{fontSize:13,color:C.cream2,lineHeight:1.6,marginBottom:12}}>Redeem ₣100 Franckls for real items: premium content, physical books, and exclusive ritual guides.</p>
+        <div style={{padding:'10px',background:C.bg3,border:`1px solid ${C.border}`,borderRadius:10,fontSize:12,color:C.muted}}>
+          Store opens at ₣100 · You have ₣{franckls}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AD BANNER ────────────────────────────────────────────────────────────────
+function AdBanner(){
+  const[i,setI]=useState(0);
+  useEffect(()=>{const t=setInterval(()=>setI(x=>(x+1)%ADS.length),11000);return()=>clearInterval(t);},[]);
+  const ad=ADS[i];
+  return(
+    <div style={{background:C.bg2,borderBottom:`1px solid ${C.border}`,padding:'6px 14px',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+      <span style={{fontSize:9,letterSpacing:2,color:C.muted,border:`1px solid ${C.muted}`,padding:'2px 5px',borderRadius:3}}>AD</span>
+      <span style={{fontSize:11,color:C.cream2,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ad.text}</span>
+      <span style={{fontSize:11,color:C.gold,border:`1px solid ${C.border2}`,padding:'3px 10px',borderRadius:20,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>{ad.cta}</span>
+    </div>
+  );
+}
+
+// ── MEDAL UNLOCK TOAST ────────────────────────────────────────────────────────
+function MedalToast({medal,onDone}){
+  useEffect(()=>{const t=setTimeout(onDone,4000);return()=>clearTimeout(t);},[]);
+  return(
+    <div style={{position:'fixed',top:60,left:'50%',transform:'translateX(-50%)',zIndex:999,animation:'coinPop .5s ease',maxWidth:320,width:'calc(100% - 40px)'}}>
+      <div style={{background:C.bg2,border:`2px solid ${C.gold}`,borderRadius:16,padding:'16px 20px',textAlign:'center',boxShadow:`0 0 40px rgba(200,151,58,0.25)`}}>
+        <div style={{fontSize:40,marginBottom:6}}>{medal.icon}</div>
+        <div style={{fontSize:9,letterSpacing:2,color:C.gold,textTransform:'uppercase',marginBottom:2}}>New Rank Unlocked</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:C.gold,marginBottom:4}}>{medal.title}</div>
+        <div style={{fontSize:12,color:C.cream2,marginBottom:8}}>{medal.desc}</div>
+        <div style={{fontSize:13,color:C.gold2,fontWeight:500}}>+₣10 Franckls earned</div>
+      </div>
+    </div>
+  );
+}
+
+// ── APP ROOT ──────────────────────────────────────────────────────────────────
+function App(){
+  const[tab,setTab]=useState('morning');
+  const[streak,setStreak]=useState(()=>LS.get('ms_streak',0));
+  const[franckls,setFranckls]=useState(()=>LS.get('ms_franckls',0));
+  const[unlockedMedals,setUnlockedMedals]=useState(()=>LS.get('ms_medals',[]));
+  const[completedToday,setCompletedToday]=useState(()=>LS.get('ms_today',{}));
+  const[toastMedal,setToastMedal]=useState(null);
+  const[morningDone,setMorningDone]=useState(false);
+  const[eveningDone,setEveningDone]=useState(false);
+
+  const checkMedals=(newStreak,currentUnlocked)=>{
+    const newlyUnlocked=MEDALS.find(m=>m.days<=newStreak&&!currentUnlocked.includes(m.title)&&MEDALS.indexOf(m)===MEDALS.filter(x=>x.days<=newStreak).length-1);
+    if(newlyUnlocked){
+      const updated=[...currentUnlocked,newlyUnlocked.title];
+      setUnlockedMedals(updated);LS.set('ms_medals',updated);
+      setFranckls(f=>{const nf=f+10;LS.set('ms_franckls',nf);return nf;});
+      setToastMedal(newlyUnlocked);
+    }
+  };
+
+  const handleComplete=(which)=>{
+    const today=new Date().toDateString();
+    const todayData=LS.get('ms_today',{});
+    const updated={...todayData,[which]:true};
+    LS.set('ms_today',updated);setCompletedToday(updated);
+    if(which==='morning')setMorningDone(true);
+    if(which==='evening')setEveningDone(true);
+    if(updated.morning&&updated.evening){
+      const lastDay=LS.get('ms_lastday','');
+      if(lastDay!==today){
+        LS.set('ms_lastday',today);
+        const ns=streak+1;setStreak(ns);LS.set('ms_streak',ns);
+        checkMedals(ns,unlockedMedals);
+      }
+    }
+  };
+
+  const tabs=[
+    {id:'morning',label:'Morning',icon:'☀'},
+    {id:'evening',label:'Evening',icon:'☽'},
+    {id:'progress',label:'Progress',icon:'◈'},
+  ];
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',background:C.bg,overflow:'hidden'}}>
+      <AdBanner/>
+
+      {/* Top status bar */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 18px',background:C.bg2,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:C.gold,letterSpacing:.5}}>MindScape</div>
+        <div style={{display:'flex',gap:14,alignItems:'center'}}>
+          <div style={{fontSize:12,color:C.cream2}}>{streak}🔥</div>
+          <div style={{fontSize:12,color:C.gold,background:'rgba(200,151,58,0.1)',border:`1px solid ${C.border2}`,padding:'2px 10px',borderRadius:20}}>₣{franckls}</div>
+        </div>
+      </div>
+
+      <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+        {tab==='morning'&&<div style={{flex:1,overflow:'hidden'}}><MorningRitual onComplete={handleComplete}/></div>}
+        {tab==='evening'&&<div style={{flex:1,overflow:'hidden'}}><EveningRitual onComplete={handleComplete}/></div>}
+        {tab==='progress'&&<div style={{flex:1,overflow:'hidden'}}><ProgressScreen streak={streak} franckls={franckls} unlockedMedals={unlockedMedals}/></div>}
+      </div>
+
+      {/* Tab bar */}
+      <div style={{display:'flex',borderTop:`1px solid ${C.border}`,background:C.bg2,flexShrink:0}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3,padding:'10px 4px 8px',cursor:'pointer',border:'none',background:'none',color:tab===t.id?C.gold:C.muted,fontFamily:"'Jost',sans-serif",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',transition:'color .2s',position:'relative'}}>
+            <span style={{fontSize:17}}>{t.icon}</span>
+            {t.label}
+            {/* Done indicator */}
+            {t.id==='morning'&&morningDone&&<div style={{position:'absolute',top:8,right:'28%',width:6,height:6,borderRadius:'50%',background:C.gold2}}/>}
+            {t.id==='evening'&&eveningDone&&<div style={{position:'absolute',top:8,right:'28%',width:6,height:6,borderRadius:'50%',background:C.gold2}}/>}
+          </button>
+        ))}
+      </div>
+
+      {/* Medal toast */}
+      {toastMedal&&<MedalToast medal={toastMedal} onDone={()=>setToastMedal(null)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
