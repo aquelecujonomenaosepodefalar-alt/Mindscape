@@ -38,12 +38,12 @@ const T={
 
 // ── DATA ──────────────────────────────────────────────────────────────────────
 const MEDALS=[
-  {days:3,   name:'Incauto',       icon:'◌', note:'The first step into the unknown.'},
-  {days:7,   name:'Iniciado',      icon:'◎', note:'The ritual becomes habit.'},
-  {days:30,  name:'Adepto',        icon:'◇', note:'One month of inner work.'},
-  {days:90,  name:'Cavaleiro',     icon:'✦', note:'Three months of discipline.'},
-  {days:180, name:'Mestre',        icon:'⬡', note:'Half a year of transformation.'},
-  {days:270, name:'Grande Mestre', icon:'✸', note:'Nine months of gestation.'},
+  {days:3,   name:'Unwary',       icon:'◌', note:'The first step into the unknown.'},
+  {days:7,   name:'Initiate',      icon:'◎', note:'The ritual becomes habit.'},
+  {days:30,  name:'Adept',        icon:'◇', note:'One month of inner work.'},
+  {days:90,  name:'Knight',     icon:'✦', note:'Three months of discipline.'},
+  {days:180, name:'Master',        icon:'⬡', note:'Half a year of transformation.'},
+  {days:270, name:'Grand Master', icon:'✸', note:'Nine months of wisdom gestation.'},
   {days:365, name:'Lacan',         icon:'Ω', note:'One year. Language reshapes the self.'},
   {days:730, name:'Frankl',        icon:'◈', note:'Two years. Meaning found in everything.'},
   {days:1095,name:'Freud',         icon:'Ψ', note:'Three years. The unconscious is yours.'},
@@ -96,7 +96,7 @@ const RITUALS=[
   {
     id:'freud',title:'Dream Interpretation',author:'Sigmund Freud',
     icon:'Ψ',time:'5 min',secs:300,type:'dream',session:'morning',
-    locked:true,price:100,
+    locked:true,price:50,
     desc:'Describe your dream in one sentence. Freud interprets it via AI, drawing on wish fulfillment, symbolism, and latent content.',
     science:'"Dreams are the royal road to the unconscious." Freud\'s method of latent vs. manifest content reveals repressed desires and unconscious conflicts (The Interpretation of Dreams, 1899).',
     prompt:'My dream last night:',
@@ -104,7 +104,7 @@ const RITUALS=[
   {
     id:'seligman',title:'Gratitude Anchoring',author:'Martin Seligman',
     icon:'◎',time:'5 min',secs:300,type:'journal',session:'evening',
-    locked:true,price:100,
+    locked:true,price:10,
     desc:'Write three specific things you are grateful for. Specificity is the key variable.',
     science:'Seligman\'s PERMA model shows that specific gratitude journaling increases wellbeing by 25% within three weeks and sustains gains at six-month follow-up (Seligman et al., 2005).',
     prompt:'Write three specific things you are grateful for today.\n\nBe precise — not "my family" but a particular moment with them. Seligman found that specificity is the variable that actually predicts change.',
@@ -112,7 +112,7 @@ const RITUALS=[
   {
     id:'beck',title:'Thought Record',author:'Aaron Beck / CBT',
     icon:'◇',time:'4 min',secs:240,type:'journal',session:'evening',
-    locked:true,price:100,
+    locked:true,price:25,
     desc:'Map one automatic thought: Event → Thought → Feeling → Reframe.',
     science:'Beck\'s Cognitive Therapy demonstrates that identifying and challenging automatic negative thoughts reduces depressive and anxiety symptoms by 50–60% (Beck, 1979; Butler et al., 2006).',
     prompt:'Event: what happened?\nThought: what did you tell yourself?\nFeeling: what emotion arose?\n\nNow rewrite the thought more compassionately. What would you say to a close friend in the same situation?',
@@ -120,7 +120,7 @@ const RITUALS=[
   {
     id:'reich',title:'Embodiment Check',author:'Wilhelm Reich',
     icon:'○',time:'3 min',secs:180,type:'move',session:'morning',
-    locked:true,price:100,
+    locked:true,price:15,
     desc:'Stand, feel the ground, scan your body for held tension and armor.',
     science:'Reich\'s character analysis showed that unprocessed emotions create chronic muscular tension ("body armor"). Somatic awareness is the first step toward release (Reich, Character Analysis, 1933).',
     prompt:'Feel your feet on the ground.\n\nScan slowly from feet to jaw. Where does your body hold tension? Reich taught that every chronic tension pattern tells an emotional story.',
@@ -128,7 +128,7 @@ const RITUALS=[
   {
     id:'lacan',title:'Mirror Stage Reflection',author:'Jacques Lacan',
     icon:'Ω',time:'4 min',secs:240,type:'journal',session:'morning',
-    locked:true,price:100,
+    locked:true,price:20,
     desc:'Examine the gap between who you think you are and what others actually see.',
     science:'Lacan\'s Mirror Stage (Écrits, 1949) reveals that identity is always constructed through the gaze of the Other. The "I" we inhabit is a misrecognition — and naming this opens genuine self-knowledge.',
     prompt:'Lacan taught that we never see ourselves directly — only through the mirror of others\' perception.\n\nWrite: who do you believe you are? And what do you suspect others actually see when they look at you? Where do these images diverge?',
@@ -136,7 +136,7 @@ const RITUALS=[
   {
     id:'foucault',title:'Power Archaeology',author:'Michel Foucault',
     icon:'✸',time:'5 min',secs:300,type:'journal',session:'evening',
-    locked:true,price:100,
+    locked:true,price:75,
     desc:'Excavate which invisible power structures shaped your decisions today.',
     science:'Foucault\'s genealogy of power shows that subjectivity is constituted by institutional discourses — norms, expertise, surveillance. Naming these structures is the first act of resistance and freedom (Discipline and Punish, 1975).',
     prompt:'Foucault asked: who benefits from the rules you obey without questioning?\n\nWrite about one decision, feeling, or self-judgment today that may have been produced by an external authority — social norms, institutional expectations, media, family scripts. What would you have chosen in total freedom?',
@@ -348,7 +348,7 @@ function MedalToast({medal,onDone}){
         <div style={{fontSize:9,letterSpacing:2,color:T.gold,textTransform:'uppercase',marginBottom:2}}>New Rank Unlocked</div>
         <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold,marginBottom:4}}>{medal.name}</div>
         <div style={{fontSize:12,color:T.cream2,marginBottom:8}}>{medal.note}</div>
-        <div style={{fontSize:13,color:T.gold2,fontWeight:500}}>+₣10 Franckls earned</div>
+        <div style={{fontSize:13,color:T.gold2,fontWeight:500}}>+₣20 Franckls earned</div>
       </div>
     </div>
   );
@@ -1014,12 +1014,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const MEDALS = [
-  {days:3,    name:'Incauto',       icon:'◌', note:'The first step into the unknown.'},
-  {days:7,    name:'Iniciado',      icon:'◎', note:'The ritual becomes habit.'},
-  {days:30,   name:'Adepto',        icon:'◇', note:'One month of inner work.'},
-  {days:90,   name:'Cavaleiro',     icon:'✦', note:'Three months of discipline.'},
-  {days:180,  name:'Mestre',        icon:'⬡', note:'Half a year of transformation.'},
-  {days:270,  name:'Grande Mestre', icon:'✸', note:'Nine months — a gestation complete.'},
+  {days:3,    name:'Unwary',       icon:'◌', note:'The first step into the unknown.'},
+  {days:7,    name:'Iniciate',      icon:'◎', note:'The ritual becomes habit.'},
+  {days:30,   name:'Adept',        icon:'◇', note:'One month of inner work.'},
+  {days:90,   name:'Knight',     icon:'✦', note:'Three months of discipline.'},
+  {days:180,  name:'Master',        icon:'⬡', note:'Half a year of transformation.'},
+  {days:270,  name:'Grand Master', icon:'✸', note:'Nine months — a gestation complete.'},
   {days:365,  name:'Lacan',         icon:'Ω', note:'One year. Language reshapes the self.'},
   {days:730,  name:'Frankl',        icon:'◈', note:'Two years. Meaning found in everything.'},
   {days:1095, name:'Freud',         icon:'Ψ', note:'Three years. The unconscious is yours.'},
@@ -1254,7 +1254,7 @@ function MedalToast({ medal, onDone }) {
         <div style={{ fontSize:9, letterSpacing:2, color:T.gold, textTransform:'uppercase', marginBottom:2 }}>New Rank Unlocked</div>
         <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:22, color:T.gold, marginBottom:4 }}>{medal.name}</div>
         <div style={{ fontSize:12, color:T.cream2, marginBottom:8 }}>{medal.note}</div>
-        <div style={{ fontSize:13, color:T.gold2, fontWeight:500 }}>+₣10 Franckls earned</div>
+        <div style={{ fontSize:13, color:T.gold2, fontWeight:500 }}>+₣20 Franckls earned</div>
       </div>
     </div>
   );
@@ -1630,7 +1630,7 @@ function ProgressScreen({ streak, franckls, unlocked }) {
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
         {[
           { label:'Day Streak', value: streak + ' 🔥', sub: streak === 1 ? '1 consecutive day' : `${streak} consecutive days` },
-          { label:'Franckls',   value: '₣' + franckls,  sub: franckls >= 100 ? '✦ Ready to redeem!' : `₣${100-franckls} until store` },
+          { label:'Franckls',   value: '₣' + franckls,  sub: franckls >= 10 ? '✦ Ready to redeem!' : `₣${10-franckls} until store` },
         ].map(s => (
           <div key={s.label} style={{ background:T.bg2, border:`1px solid ${T.b2}`, borderRadius:14, padding:'16px 12px', textAlign:'center' }}>
             <div style={{ fontSize:9, letterSpacing:2, color:T.muted, textTransform:'uppercase', marginBottom:6 }}>{s.label}</div>
