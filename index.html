@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
@@ -17,16 +17,19 @@ textarea{resize:none;}
 ::-webkit-scrollbar{width:3px;}
 ::-webkit-scrollbar-thumb{background:rgba(200,151,58,0.3);border-radius:3px;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes glow{0%,100%{opacity:.25}50%{opacity:.85}}
 @keyframes shimmer{0%,100%{opacity:.3}50%{opacity:1}}
 @keyframes pop{0%{transform:scale(.5);opacity:0}65%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+@keyframes orbit{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.15);opacity:1}}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef} = React;
+const {useState,useEffect,useRef,useMemo} = React;
 
 // ── THEME ─────────────────────────────────────────────────────────────────────
 const T={
@@ -36,70 +39,1368 @@ const T={
   b1:'rgba(200,151,58,0.15)',b2:'rgba(200,151,58,0.32)',
 };
 
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const TRIAL_DAYS = 7;
+const SUB_MONTHLY = 6.99;
+const SUB_YEARLY = 39.99;
+
 // ── DATA ──────────────────────────────────────────────────────────────────────
 const MEDALS=[
-  {days:3,   name:'Unwary',       icon:'◌', note:'The first step into the unknown.'},
-  {days:7,   name:'Initiate',      icon:'◎', note:'The ritual becomes habit.'},
-  {days:30,  name:'Adept',        icon:'◇', note:'One month of inner work.'},
-  {days:90,  name:'Knight',     icon:'✦', note:'Three months of discipline.'},
-  {days:180, name:'Master',        icon:'⬡', note:'Half a year of transformation.'},
-  {days:270, name:'Grand Master', icon:'✸', note:'Nine months of wisdom gestation.'},
-  {days:365, name:'Lacan',         icon:'Ω', note:'One year. Language reshapes the self.'},
-  {days:730, name:'Frankl',        icon:'◈', note:'Two years. Meaning found in everything.'},
-  {days:1095,name:'Freud',         icon:'Ψ', note:'Three years. The unconscious is yours.'},
-  {days:1825,name:'Jung',          icon:'☽', note:'Five years. You have become whole.'},
+  {days:3,   name:'Unwary',       icon:'◌', note:'O primeiro passo no desconhecido.'},
+  {days:7,   name:'Initiate',     icon:'◎', note:'O ritual virou hábito.'},
+  {days:30,  name:'Adept',        icon:'◇', note:'Um mês de trabalho interior.'},
+  {days:90,  name:'Knight',       icon:'✦', note:'Três meses de disciplina.'},
+  {days:180, name:'Master',       icon:'⬡', note:'Meio ano de transformação.'},
+  {days:270, name:'Grand Master', icon:'✸', note:'Nove meses de gestação interior.'},
+  {days:365, name:'Lacan',        icon:'Ω', note:'Um ano. A linguagem reescreve o eu.'},
+  {days:730, name:'Frankl',       icon:'◈', note:'Dois anos. Sentido em tudo.'},
+  {days:1095,name:'Freud',        icon:'Ψ', note:'Três anos. O inconsciente é seu.'},
+  {days:1825,name:'Jung',         icon:'☽', note:'Cinco anos. Tornou-se inteiro.'},
 ];
 
-const ADS=[
-  {text:'BetterHelp — Professional therapy, online. Start your journey today.',cta:'Try Free'},
-  {text:'Headspace — Guided meditation for a calmer mind. 14-day free trial.',cta:'Learn More'},
-  {text:'Calm — Sleep stories, breathing exercises, and mindfulness.',cta:'Get Calm'},
-  {text:'Insight Timer — 100,000+ free meditations. Join 25 million users.',cta:'Explore'},
+const MOODS=[
+  {id:'calm',     label:'Calmo',      icon:'○', color:'#7aa48a'},
+  {id:'grateful', label:'Grato',      icon:'◇', color:'#c8973a'},
+  {id:'energized',label:'Energizado', icon:'✦', color:'#e8b84b'},
+  {id:'focused',  label:'Focado',     icon:'◎', color:'#9b8db3'},
+  {id:'anxious',  label:'Ansioso',    icon:'◐', color:'#d49066'},
+  {id:'sad',      label:'Triste',     icon:'◑', color:'#6b87a8'},
+  {id:'angry',    label:'Irritado',   icon:'◉', color:'#c25555'},
+  {id:'empty',    label:'Vazio',      icon:'○', color:'#7a6f5f'},
 ];
 
-// ── ALL RITUALS ───────────────────────────────────────────────────────────────
+// ── ALL RITUALS (todas liberadas no trial; depois exigem assinatura) ─────────
 const RITUALS=[
-  // ── FREE ──
   {
-    id:'frankl',title:'Intention Setting',author:'Viktor Frankl',
-    icon:'◇',time:'3 min',secs:180,type:'journal',session:'morning',
-    locked:false,price:0,
-    desc:'Write one sentence of purpose for today. Anchor your actions to meaning.',
-    science:'Logotherapy research shows that daily meaning-anchoring reduces anxiety and increases cognitive resilience (Frankl, 1946; Baumeister, 1991).',
-    prompt:'Complete this sentence:\n\n"Today I will contribute meaning by…"\n\nFrankl believed that even the smallest act, done with intention, is an expression of freedom.',
+    id:'frankl',title:'Definir Intenção',author:'Viktor Frankl',
+    icon:'◇',time:'3 min',type:'journal',session:'morning',
+    desc:'Escreva uma frase de propósito para hoje. Ancore suas ações ao sentido.',
+    science:'Logoterapia: ancoragem diária reduz ansiedade e aumenta resiliência cognitiva (Frankl, 1946; Baumeister, 1991).',
+    prompt:'Complete esta frase:\n\n"Hoje vou contribuir com sentido ao…"\n\nFrankl ensinava que mesmo o menor ato, feito com intenção, é uma expressão de liberdade.',
   },
   {
-    id:'breath478',title:'4·7·8 Breathwork',author:'Andrew Weil / CBT',
-    icon:'◎',time:'4 min',secs:240,type:'breath',session:'morning',
-    locked:false,price:0,
-    desc:'Inhale 4, hold 7, exhale 8. Four complete cycles. Resets the nervous system.',
-    science:'Activates the parasympathetic nervous system and reduces cortisol within minutes. Clinically validated for anxiety and sleep disorders (Weil, 2015; Brown & Gerbarg, 2012).',
+    id:'breath478',title:'Respiração 4·7·8',author:'Andrew Weil / TCC',
+    icon:'◎',time:'4 min',type:'breath',session:'morning',
+    desc:'Inspire 4, segure 7, expire 8. Quatro ciclos. Reseta o sistema nervoso.',
+    science:'Ativa o sistema parassimpático e reduz cortisol em minutos. Validado clinicamente para ansiedade e sono (Weil, 2015; Brown & Gerbarg, 2012).',
     prompt:'',
   },
   {
-    id:'shadow1',title:'Shadow Journal',author:'Carl Jung',
-    icon:'✦',time:'5 min',secs:300,type:'shadow',session:'evening',
-    locked:false,price:0,
-    desc:'One question about what disturbed you today. Jung reads your answer via AI.',
-    science:'Shadow work is central to Jungian individuation. Naming the shadow reduces its unconscious influence on behavior and projection onto others (Jung, Aion, 1951).',
-    prompt:'What bothered or unsettled you today?\n\nWrite freely, without judgment. Jung taught that what disturbs us most is a mirror of what we have not yet integrated within ourselves.',
+    id:'shadow1',title:'Diário da Sombra',author:'Carl Jung',
+    icon:'✦',time:'5 min',type:'shadow',session:'evening',
+    desc:'Uma pergunta sobre o que te perturbou hoje. Jung lê sua resposta via IA.',
+    science:'Trabalho da sombra é central na individuação junguiana. Nomear a sombra reduz sua influência inconsciente sobre comportamento e projeção (Jung, Aion, 1951).',
+    prompt:'O que te perturbou ou desestabilizou hoje?\n\nEscreva livremente, sem julgamento. Jung ensinou que aquilo que mais nos perturba é espelho do que ainda não integramos em nós mesmos.',
   },
   {
-    id:'relax',title:'Progressive Relaxation',author:'Edmund Jacobson',
-    icon:'○',time:'6 min',secs:360,type:'relax',session:'evening',
-    locked:false,price:0,
-    desc:'Tense and release each muscle group with the Vitruvian body guide and voice.',
-    science:'Jacobson (1929) demonstrated that systematic muscular release breaks the anxiety–tension cycle. Remains the gold standard somatic protocol in clinical psychology.',
+    id:'relax',title:'Relaxamento Progressivo',author:'Edmund Jacobson',
+    icon:'○',time:'6 min',type:'relax',session:'evening',
+    desc:'Tensione e relaxe cada grupo muscular com o guia Vitruviano e voz.',
+    science:'Jacobson (1929) demonstrou que liberação muscular sistemática quebra o ciclo ansiedade-tensão. Protocolo somático padrão-ouro até hoje.',
     prompt:'',
   },
-  // ── LOCKED ──
   {
-    id:'freud',title:'Dream Interpretation',author:'Sigmund Freud',
-    icon:'Ψ',time:'5 min',secs:300,type:'dream',session:'morning',
-    locked:true,price:50,
-    desc:'Describe your dream in one sentence. Freud interprets it via AI, drawing on wish fulfillment, symbolism, and latent content.',
-    science:'"Dreams are the royal road to the unconscious." Freud\'s method of latent vs. manifest content reveals repressed desires and unconscious conflicts (The Interpretation of Dreams, 1899).',
-    prompt:'My dream last night:',
+    id:'freud',title:'Interpretação de Sonho',author:'Sigmund Freud',
+    icon:'Ψ',time:'5 min',type:'dream',session:'morning',
+    desc:'Descreva seu sonho em uma frase. Freud o interpreta via IA, com base em realização de desejo, simbolismo e conteúdo latente.',
+    science:'"Os sonhos são a estrada real para o inconsciente." Método de conteúdo latente vs. manifesto revela desejos reprimidos e conflitos (A Interpretação dos Sonhos, 1899).',
+    prompt:'Meu sonho de ontem à noite:',
+  },
+  {
+    id:'seligman',title:'Ancoragem de Gratidão',author:'Martin Seligman',
+    icon:'◎',time:'5 min',type:'journal',session:'evening',
+    desc:'Escreva três coisas específicas pelas quais você é grato. A especificidade é a variável-chave.',
+    science:'Modelo PERMA: gratidão específica aumenta bem-estar em 25% em três semanas e mantém ganhos em seis meses (Seligman et al., 2005).',
+    prompt:'Escreva três coisas específicas pelas quais você é grato hoje.\n\nSeja preciso — não "minha família" mas um momento particular com eles. Seligman descobriu que a especificidade é a variável que prevê mudança.',
+  },
+  {
+    id:'beck',title:'Registro de Pensamento',author:'Aaron Beck / TCC',
+    icon:'◇',time:'4 min',type:'journal',session:'evening',
+    desc:'Mapeie um pensamento automático: Evento → Pensamento → Sentimento → Reformular.',
+    science:'Terapia Cognitiva: identificar e desafiar pensamentos automáticos negativos reduz sintomas depressivos e ansiosos em 50–60% (Beck, 1979; Butler et al., 2006).',
+    prompt:'Evento: o que aconteceu?\nPensamento: o que você disse a si mesmo?\nSentimento: que emoção surgiu?\n\nAgora reescreva o pensamento com mais compaixão. O que você diria a um amigo próximo na mesma situação?',
+  },
+  {
+    id:'reich',title:'Check-in Corporal',author:'Wilhelm Reich',
+    icon:'○',time:'3 min',type:'move',session:'morning',
+    desc:'Em pé, sinta o chão, escaneie seu corpo em busca de tensão e couraça.',
+    science:'Análise do caráter: emoções não processadas criam tensão muscular crônica ("couraça corporal"). Consciência somática é o primeiro passo para liberação (Reich, 1933).',
+    prompt:'Sinta seus pés no chão.\n\nEscaneie lentamente dos pés à mandíbula. Onde seu corpo guarda tensão? Reich ensinou que cada padrão crônico de tensão conta uma história emocional.',
+  },
+  {
+    id:'lacan',title:'Reflexão do Estádio do Espelho',author:'Jacques Lacan',
+    icon:'Ω',time:'4 min',type:'journal',session:'morning',
+    desc:'Examine a distância entre quem você acredita ser e o que os outros realmente veem.',
+    science:'Estádio do Espelho (Écrits, 1949): identidade é sempre construída pelo olhar do Outro. O "eu" que habitamos é um desconhecimento — nomeá-lo abre autoconhecimento real.',
+    prompt:'Lacan ensinou que nunca nos vemos diretamente — apenas pelo espelho da percepção dos outros.\n\nEscreva: quem você acredita que é? E o que você suspeita que os outros realmente veem? Onde essas imagens divergem?',
+  },
+  {
+    id:'foucault',title:'Arqueologia do Poder',author:'Michel Foucault',
+    icon:'✸',time:'5 min',type:'journal',session:'evening',
+    desc:'Escave que estruturas de poder invisíveis moldaram suas decisões hoje.',
+    science:'Genealogia do poder: subjetividade é constituída por discursos institucionais — normas, expertise, vigilância. Nomeá-las é o primeiro ato de resistência (Vigiar e Punir, 1975).',
+    prompt:'Foucault perguntou: quem se beneficia das regras que você obedece sem questionar?\n\nEscreva sobre uma decisão, sentimento ou autojulgamento de hoje que pode ter sido produzido por uma autoridade externa — normas sociais, expectativas institucionais, mídia, scripts familiares. O que você teria escolhido em total liberdade?',
+  },
+];
+
+// ── COSMETIC SHOP (Franckls = só estética agora) ──────────────────────────────
+const SHOP=[
+  // Streak protection
+  {id:'freeze1',cat:'Proteção',name:'Streak Freeze',price:20,icon:'❄',
+    desc:'Proteja sua sequência por 1 dia. Use quando não conseguir praticar.',type:'powerup'},
+  {id:'freeze7',cat:'Proteção',name:'Pacote 7 Streak Freezes',price:120,icon:'❄',
+    desc:'Sete proteções para sua jornada. Economia de 30%.',type:'powerup'},
+  // Themes
+  {id:'theme_alch',cat:'Temas',name:'Tema Alquímico',price:80,icon:'⚗',
+    desc:'Símbolos alquímicos, dourado-ferrugem, fundo de pergaminho antigo.',type:'theme'},
+  {id:'theme_lunar',cat:'Temas',name:'Tema Lunar',price:80,icon:'☽',
+    desc:'Prata sobre azul-noite. A estética junguiana do inconsciente.',type:'theme'},
+  {id:'theme_classic',cat:'Temas',name:'Tema Clássico',price:80,icon:'◈',
+    desc:'Mármore branco e ouro fosco. Estética greco-romana.',type:'theme'},
+  // Avatars
+  {id:'av_femme',cat:'Avatares',name:'Vitruviana Feminina',price:60,icon:'☿',
+    desc:'Versão feminina do Homem Vitruviano para o relaxamento corporal.',type:'avatar'},
+  {id:'av_anima',cat:'Avatares',name:'Anima/Animus',price:90,icon:'☉',
+    desc:'Avatar dual — masculino e feminino entrelaçados. Símbolo junguiano de integração.',type:'avatar'},
+  {id:'av_arch',cat:'Avatares',name:'Arquétipos (4 avatares)',price:150,icon:'✸',
+    desc:'Sábio, Herói, Sombra, Self. Troque conforme o ritual.',type:'avatar'},
+  // Sounds
+  {id:'snd_solf',cat:'Sons',name:'Pacote Solfeggio',price:50,icon:'♪',
+    desc:'8 frequências sagradas (174Hz, 285, 396, 417, 528, 639, 741, 852Hz).',type:'sound'},
+  {id:'snd_nat',cat:'Sons',name:'Pacote Natureza',price:50,icon:'♪',
+    desc:'Floresta, oceano, chuva, fogo. Gravações binaurais.',type:'sound'},
+  {id:'snd_temple',cat:'Sons',name:'Pacote Templo',price:50,icon:'♪',
+    desc:'Tigelas tibetanas, gongos, mantras gregorianos.',type:'sound'},
+  // Stickers
+  {id:'stk_jung',cat:'Stickers',name:'Citações Jung',price:30,icon:'☽',
+    desc:'12 cards compartilháveis com citações de Jung. Para Stories.',type:'sticker'},
+  {id:'stk_freud',cat:'Stickers',name:'Citações Freud',price:30,icon:'Ψ',
+    desc:'12 cards compartilháveis com citações de Freud. Para Stories.',type:'sticker'},
+];
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const LS={
+  get:(k,d)=>{try{const v=localStorage.getItem(k);return v!=null?JSON.parse(v):d;}catch{return d;}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}},
+};
+
+function makeAudio(){
+  let ctx=null,oscs=[],on=false;
+  return{
+    start(){
+      if(on)return;
+      try{
+        ctx=new(window.AudioContext||window.webkitAudioContext)();
+        const m=ctx.createGain();m.gain.value=0.055;m.connect(ctx.destination);
+        [[174.6,0],[261.6,.5],[349.2,1],[523.2,1.6]].forEach(([f,d])=>{
+          const o=ctx.createOscillator(),g=ctx.createGain();
+          o.type='sine';o.frequency.value=f;g.gain.value=.5;
+          o.connect(g);g.connect(m);o.start(ctx.currentTime+d);oscs.push(o);
+        });on=true;
+      }catch{}
+    },
+    stop(){
+      if(!on)return;
+      oscs.forEach(o=>{try{o.stop();o.disconnect();}catch{}});
+      oscs=[];try{ctx&&ctx.close();}catch{};ctx=null;on=false;
+    },
+  };
+}
+
+function say(text){
+  if(!window.speechSynthesis)return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=0.78;u.pitch=0.65;u.volume=0.92;u.lang='pt-BR';
+  const vs=speechSynthesis.getVoices();
+  let v=vs.find(x=>x.lang.startsWith('pt'))||vs.find(x=>x.lang.startsWith('en'));
+  if(v)u.voice=v;
+  speechSynthesis.speak(u);
+}
+
+async function callAI(system,content){
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:700,system,messages:[{role:'user',content}]}),
+  });
+  const d=await r.json();
+  return(d.content||[]).map(b=>b.text||'').join('');
+}
+
+const JUNG_SYS=`Você é Carl Gustav Jung, falando em primeira pessoa em português. O usuário acabou de nomear algo que o perturbou hoje — sua sombra. Ofereça uma reflexão junguiana calorosa e penetrante em 2–3 parágrafos. Use: Sombra, projeção, integração, individuação, o Self. Fale como um companheiro sábio, não como um lecturer. Termine com uma pergunta que convide à reflexão mais profunda. Assine como: — Jung`;
+const FREUD_SYS=`Você é Sigmund Freud, falando em primeira pessoa em português. O usuário descreveu um sonho. Ofereça uma interpretação freudiana em 2–3 parágrafos: realização de desejo, conteúdo latente vs manifesto, simbolismo, repressão, o id. Seja preciso, ligeiramente formal mas caloroso. Dê uma leitura confiante. Termine com: — Freud`;
+
+// ── TRIAL/SUBSCRIPTION HELPERS ────────────────────────────────────────────────
+function getTrialState(){
+  const start=LS.get('ms_trial_start',null);
+  const subbed=LS.get('ms_subscribed',false);
+  if(subbed)return{active:true,subscribed:true,daysLeft:999};
+  if(!start)return{active:false,subscribed:false,daysLeft:0,never:true};
+  const days=Math.floor((Date.now()-start)/86400000);
+  const daysLeft=Math.max(0,TRIAL_DAYS-days);
+  return{active:daysLeft>0,subscribed:false,daysLeft,never:false};
+}
+
+// ── NOTIFICATION HELPERS ──────────────────────────────────────────────────────
+function scheduleLocalNotifications(morningHour,eveningHour){
+  // Em browsers, notificações reais só podem rodar via service worker (background).
+  // Em produção mobile, isso seria feito via APIs nativas.
+  // Aqui, simulamos enquanto a aba estiver aberta.
+  if(!('Notification' in window)||Notification.permission!=='granted')return;
+  function tryNotify(){
+    const now=new Date();
+    const h=now.getHours(),m=now.getMinutes();
+    const lastSent=LS.get('ms_last_notif','');
+    const todayKey=now.toDateString();
+    if(h===morningHour&&m===0&&lastSent!==todayKey+'_m'){
+      new Notification('☀ MindScape',{body:'Frankl espera sua intenção do dia. 3 minutos.',icon:''});
+      LS.set('ms_last_notif',todayKey+'_m');
+    }
+    if(h===eveningHour&&m===0&&lastSent!==todayKey+'_e'){
+      new Notification('☽ MindScape',{body:'Sua sombra deseja ser ouvida. Jung está esperando.',icon:''});
+      LS.set('ms_last_notif',todayKey+'_e');
+    }
+  }
+  setInterval(tryNotify,60000);
+}
+
+// ── VITRUVIAN AVATAR ─────────────────────────────────────────────────────────
+const RELAX_PARTS=[
+  {id:'feet',     label:'Pés',         cue:'Curve os dedos do pé com força… segure… e solte.'},
+  {id:'calves',   label:'Panturrilhas',cue:'Flexione as panturrilhas… segure… e solte.'},
+  {id:'thighs',   label:'Coxas',       cue:'Tensione as coxas… segure… e solte.'},
+  {id:'abdomen',  label:'Abdômen',     cue:'Puxe o abdômen para dentro… segure… e solte.'},
+  {id:'chest',    label:'Peito',       cue:'Inspire e segure no peito… expire e solte.'},
+  {id:'shoulders',label:'Ombros',      cue:'Eleve os ombros até as orelhas… segure… e solte.'},
+  {id:'arms',     label:'Braços',      cue:'Tensione os braços e os punhos… segure… e solte.'},
+  {id:'face',     label:'Rosto',       cue:'Comprima o rosto com força… segure… e relaxe completamente.'},
+];
+
+function Vitruvian({hl}){
+  const h=hl||'';
+  const sc=(p)=>({stroke:h===p?T.gold:T.cream2,strokeWidth:h===p?2.5:1.4});
+  const an=(p)=>h===p?{animation:'glow 1.2s ease-in-out infinite'}:{};
+  return(
+    <svg width="180" height="220" viewBox="0 0 180 220">
+      <defs>
+        <radialGradient id="vg" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgba(200,151,58,0.05)"/>
+          <stop offset="100%" stopColor="transparent"/>
+        </radialGradient>
+      </defs>
+      <circle cx="90" cy="105" r="80" fill="url(#vg)" stroke={T.b2} strokeWidth=".7" strokeDasharray="3 6"/>
+      <rect x="24" y="24" width="132" height="158" fill="none" stroke={T.b1} strokeWidth=".5" strokeDasharray="2 5"/>
+      <line x1="90" y1="22" x2="90" y2="200" stroke={T.b1} strokeWidth=".4" opacity=".4"/>
+      <line x1="14" y1="105" x2="166" y2="105" stroke={T.b1} strokeWidth=".4" opacity=".4"/>
+      <circle cx="90" cy="38" r="16" fill="none" {...sc('face')} style={an('face')}/>
+      <circle cx="84" cy="36" r="1.7" fill={T.gold} opacity=".6"/>
+      <circle cx="96" cy="36" r="1.7" fill={T.gold} opacity=".6"/>
+      <line x1="90" y1="54" x2="90" y2="64" stroke={T.cream2} strokeWidth="1.4"/>
+      <line x1="60" y1="72" x2="120" y2="72" {...sc('shoulders')} style={an('shoulders')}/>
+      <line x1="90" y1="64" x2="60" y2="72" stroke={T.cream2} strokeWidth="1.1" opacity=".7"/>
+      <line x1="90" y1="64" x2="120" y2="72" stroke={T.cream2} strokeWidth="1.1" opacity=".7"/>
+      <line x1="90" y1="72" x2="90" y2="126" stroke={T.cream2} strokeWidth="1.6"/>
+      <ellipse cx="90" cy="88" rx="21" ry="14" fill="none" {...sc('chest')} style={an('chest')} opacity=".7"/>
+      <ellipse cx="90" cy="111" rx="16" ry="12" fill="none" {...sc('abdomen')} style={an('abdomen')} opacity=".65"/>
+      <line x1="60" y1="72" x2="36" y2="100" stroke={T.cream2} strokeWidth="1.4"/>
+      <line x1="120" y1="72" x2="144" y2="100" stroke={T.cream2} strokeWidth="1.4"/>
+      <line x1="36" y1="100" x2="20" y2="126" {...sc('arms')} style={an('arms')}/>
+      <line x1="144" y1="100" x2="160" y2="126" {...sc('arms')} style={an('arms')}/>
+      <circle cx="20" cy="128" r="3" fill="none" stroke={T.cream2} strokeWidth="1"/>
+      <circle cx="160" cy="128" r="3" fill="none" stroke={T.cream2} strokeWidth="1"/>
+      <line x1="60" y1="84" x2="16" y2="84" stroke={T.cream2} strokeWidth=".6" opacity=".2"/>
+      <line x1="120" y1="84" x2="164" y2="84" stroke={T.cream2} strokeWidth=".6" opacity=".2"/>
+      <line x1="66" y1="126" x2="114" y2="126" stroke={T.cream2} strokeWidth="1.2"/>
+      <line x1="78" y1="126" x2="70" y2="164" {...sc('thighs')} style={an('thighs')}/>
+      <line x1="102" y1="126" x2="110" y2="164" {...sc('thighs')} style={an('thighs')}/>
+      <line x1="70" y1="164" x2="66" y2="198" {...sc('calves')} style={an('calves')}/>
+      <line x1="110" y1="164" x2="114" y2="198" {...sc('calves')} style={an('calves')}/>
+      <ellipse cx="62" cy="200" rx="9" ry="4" fill="none" {...sc('feet')} style={an('feet')}/>
+      <ellipse cx="118" cy="200" rx="9" ry="4" fill="none" {...sc('feet')} style={an('feet')}/>
+      {h&&h!=='none'&&<circle cx="90" cy="105" r="82" fill="none" stroke={T.gold} strokeWidth=".5" opacity=".1" style={{animation:'glow 2s ease-in-out infinite'}}/>}
+    </svg>
+  );
+}
+
+// ── BREATH CIRCLE ─────────────────────────────────────────────────────────────
+function BreathCircle({phase}){
+  const sz=phase==='exhale'?44:76;
+  const labels={inhale:'Inspire',hold:'Segure',exhale:'Expire'};
+  return(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'8px 0'}}>
+      <div style={{position:'relative',width:150,height:150,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {[0,1,2].map(i=>(
+          <div key={i} style={{position:'absolute',width:(sz+i*24)+'px',height:(sz+i*24)+'px',borderRadius:'50%',border:`${i===0?1.5:.8}px solid ${T.gold}`,opacity:.07+i*.07,transition:'all 1.6s cubic-bezier(.4,0,.2,1)'}}/>
+        ))}
+        <div style={{width:sz,height:sz,borderRadius:'50%',background:'rgba(200,151,58,0.07)',border:`1.5px solid ${T.gold}`,display:'flex',alignItems:'center',justifyContent:'center',transition:'all 1.6s cubic-bezier(.4,0,.2,1)'}}>
+          <span style={{fontSize:9,letterSpacing:2,color:T.gold,textTransform:'uppercase'}}>{labels[phase]}</span>
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,width:'86%'}}>
+        {[['Inspire','4','inhale'],['Segure','7','hold'],['Expire','8','exhale']].map(([l,n,id])=>(
+          <div key={id} style={{textAlign:'center',padding:'8px 4px',background:phase===id?'rgba(200,151,58,0.1)':T.bg3,border:`1px solid ${phase===id?T.b2:T.b1}`,borderRadius:10,transition:'all .5s'}}>
+            <div style={{fontSize:9,color:phase===id?T.gold:T.muted,letterSpacing:.5}}>{l}</div>
+            <div style={{fontSize:20,color:T.cream,fontFamily:"'Cormorant Garamond',serif"}}>{n}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── ONBOARDING (60s magic moment) ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+function Onboarding({onDone}){
+  const[step,setStep]=useState(0);
+  const[answers,setAnswers]=useState({goal:null,time:null,session:null,name:''});
+  const[notifChoice,setNotifChoice]=useState(null);
+
+  const QUESTIONS=[
+    {key:'goal',title:'O que te trouxe aqui?',sub:'Sua resposta personaliza sua jornada.',options:[
+      {v:'clarity',label:'Encontrar mais clareza',icon:'◇'},
+      {v:'anxiety',label:'Lidar com ansiedade',icon:'◎'},
+      {v:'dreams', label:'Compreender meus sonhos',icon:'Ψ'},
+      {v:'shadow', label:'Conhecer minha sombra',icon:'☽'},
+      {v:'meaning',label:'Encontrar sentido',icon:'◈'},
+      {v:'explore',label:'Apenas explorar',icon:'○'},
+    ]},
+    {key:'time',title:'Quanto tempo por dia?',sub:'Ajustamos seus rituais ao seu ritmo.',options:[
+      {v:'5', label:'5 min · Ritual essencial',icon:'◌'},
+      {v:'10',label:'10 min · Prática equilibrada',icon:'◎'},
+      {v:'15',label:'15+ min · Imersão profunda',icon:'⬡'},
+    ]},
+    {key:'session',title:'Quando você prefere praticar?',sub:'Notificações chegarão no horário certo.',options:[
+      {v:'morning', label:'Manhã · despertar com intenção',icon:'☀'},
+      {v:'evening', label:'Noite · refletir e descansar',icon:'☽'},
+      {v:'both',    label:'Ambos · jornada completa',icon:'◈'},
+    ]},
+  ];
+
+  function chooseAnswer(key,val){
+    setAnswers(a=>({...a,[key]:val}));
+    setTimeout(()=>setStep(s=>s+1),250);
+  }
+
+  async function requestNotifications(){
+    if(!('Notification' in window)){setNotifChoice('unsupported');setTimeout(()=>setStep(s=>s+1),900);return;}
+    try{
+      const p=await Notification.requestPermission();
+      setNotifChoice(p);
+      if(p==='granted'){
+        new Notification('☽ MindScape',{body:'Estarei aqui no seu ritual diário.'});
+      }
+    }catch{setNotifChoice('denied');}
+    setTimeout(()=>setStep(s=>s+1),900);
+  }
+  function skipNotifications(){setNotifChoice('skipped');setStep(s=>s+1);}
+
+  function finish(){
+    LS.set('ms_onboarded',true);
+    LS.set('ms_profile',answers);
+    LS.set('ms_trial_start',Date.now());
+    onDone(answers);
+  }
+
+  // Determine which rituals to suggest based on answers
+  const suggested=useMemo(()=>{
+    const map={clarity:['frankl','beck'],anxiety:['breath478','relax'],dreams:['freud'],
+               shadow:['shadow1','lacan'],meaning:['frankl','seligman'],explore:['frankl','breath478']};
+    const ids=map[answers.goal]||['frankl','breath478'];
+    return ids.map(id=>RITUALS.find(r=>r.id===id)).filter(Boolean);
+  },[answers.goal]);
+
+  return(
+    <div style={{position:'fixed',inset:0,background:T.bg,zIndex:300,display:'flex',flexDirection:'column',animation:'fadeIn .6s ease'}}>
+      {/* Progress bar */}
+      <div style={{padding:'14px 20px 0',flexShrink:0}}>
+        <div style={{height:2,background:T.bg3,borderRadius:2,overflow:'hidden'}}>
+          <div style={{height:'100%',width:`${((step+1)/6)*100}%`,background:T.gold,borderRadius:2,transition:'width .5s'}}/>
+        </div>
+        {step>0&&step<5&&<button onClick={()=>setStep(s=>s-1)} style={{marginTop:14,background:'none',border:'none',color:T.muted,fontSize:12,cursor:'pointer',padding:0}}>← Voltar</button>}
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'12px 24px 24px',display:'flex',flexDirection:'column',justifyContent:'center'}}>
+
+        {/* STEP 0 — Welcome */}
+        {step===0&&(
+          <div style={{textAlign:'center',animation:'fadeUp .5s ease'}}>
+            <div style={{margin:'0 auto 28px',width:140,height:140,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+              <div style={{position:'absolute',inset:0,borderRadius:'50%',border:`1px solid ${T.b2}`,animation:'breathe 4s ease-in-out infinite'}}/>
+              <div style={{position:'absolute',inset:14,borderRadius:'50%',border:`1px solid ${T.b1}`,animation:'breathe 4s ease-in-out infinite .7s'}}/>
+              <Vitruvian hl="none"/>
+            </div>
+            <div style={{fontSize:9,letterSpacing:4,color:T.gold,textTransform:'uppercase',marginBottom:10}}>MindScape</div>
+            <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:34,fontWeight:300,color:T.cream,lineHeight:1.15,marginBottom:16}}>Conversas diárias com<br/><span style={{color:T.gold,fontStyle:'italic'}}>Jung, Freud & Frankl</span></h1>
+            <p style={{fontSize:15,color:T.cream2,lineHeight:1.7,marginBottom:36,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif"}}>Rituais psicológicos baseados nos maiores pensadores da mente. Cinco minutos por dia. Anos de transformação.</p>
+            <button onClick={()=>setStep(1)} style={{padding:'14px 48px',background:T.gold,border:'none',borderRadius:30,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1.5,cursor:'pointer',fontWeight:500,textTransform:'uppercase'}}>Começar minha jornada</button>
+            <div style={{marginTop:20,fontSize:11,color:T.muted}}>7 dias grátis · Sem cobranças até você decidir</div>
+          </div>
+        )}
+
+        {/* STEPS 1, 2, 3 — Quiz */}
+        {step>=1&&step<=3&&(
+          <div style={{animation:'fadeUp .4s ease'}}>
+            <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:10}}>Pergunta {step} de 3</div>
+            <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300,color:T.cream,marginBottom:8,lineHeight:1.25}}>{QUESTIONS[step-1].title}</h2>
+            <p style={{fontSize:13,color:T.cream2,marginBottom:24,lineHeight:1.5}}>{QUESTIONS[step-1].sub}</p>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {QUESTIONS[step-1].options.map(o=>{
+                const sel=answers[QUESTIONS[step-1].key]===o.v;
+                return(
+                  <button key={o.v} onClick={()=>chooseAnswer(QUESTIONS[step-1].key,o.v)} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 18px',background:sel?'rgba(200,151,58,0.08)':T.bg2,border:`1px solid ${sel?T.gold:T.b1}`,borderRadius:14,color:sel?T.gold:T.cream,fontFamily:"'Jost',sans-serif",fontSize:14,cursor:'pointer',textAlign:'left',transition:'all .2s'}}>
+                    <span style={{fontSize:20,color:T.gold,width:24,textAlign:'center',flexShrink:0}}>{o.icon}</span>
+                    <span style={{flex:1}}>{o.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4 — Personalização (preview) */}
+        {step===4&&(
+          <div style={{animation:'fadeUp .5s ease'}}>
+            <div style={{textAlign:'center',marginBottom:24}}>
+              <div style={{fontSize:36,color:T.gold,marginBottom:10,animation:'pulse 2s ease infinite'}}>✦</div>
+              <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:8}}>Sua jornada está pronta</div>
+              <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300,color:T.cream,marginBottom:8,lineHeight:1.25}}>Selecionamos seus rituais iniciais</h2>
+              <p style={{fontSize:13,color:T.cream2,lineHeight:1.6}}>Você pode adicionar ou trocar a qualquer momento.</p>
+            </div>
+            {suggested.map(r=>(
+              <div key={r.id} style={{background:T.bg2,border:`1px solid ${T.b2}`,borderRadius:14,padding:'14px 16px',marginBottom:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                  <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.gold}}>{r.icon} {r.title}</span>
+                  <span style={{fontSize:10,color:T.muted}}>{r.time}</span>
+                </div>
+                <div style={{fontSize:9,letterSpacing:2,color:T.gold,opacity:.7,textTransform:'uppercase',marginBottom:5}}>{r.author}</div>
+                <p style={{fontSize:12,color:T.cream2,lineHeight:1.5}}>{r.desc}</p>
+              </div>
+            ))}
+            <button onClick={()=>setStep(5)} style={{width:'100%',marginTop:14,padding:'14px',background:T.gold,border:'none',borderRadius:30,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1,cursor:'pointer',fontWeight:500}}>Continuar →</button>
+          </div>
+        )}
+
+        {/* STEP 5 — Notifications */}
+        {step===5&&(
+          <div style={{animation:'fadeUp .5s ease',textAlign:'center'}}>
+            <div style={{margin:'0 auto 24px',width:90,height:90,borderRadius:'50%',background:'rgba(200,151,58,0.06)',border:`1px solid ${T.b2}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:38,color:T.gold,animation:'pulse 2.5s ease infinite'}}>☽</div>
+            <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300,color:T.cream,marginBottom:10,lineHeight:1.25}}>Posso te chamar para o ritual?</h2>
+            <p style={{fontSize:14,color:T.cream2,lineHeight:1.7,marginBottom:18,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif"}}>Apenas duas vezes ao dia, no horário certo. Mensagens de Jung, Freud e Frankl.</p>
+
+            {/* Preview */}
+            <div style={{background:T.bg2,border:`1px solid ${T.b1}`,borderRadius:14,padding:'12px 14px',marginBottom:24,textAlign:'left'}}>
+              <div style={{fontSize:9,letterSpacing:2,color:T.muted,marginBottom:6,textTransform:'uppercase'}}>Pré-visualização</div>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                <div style={{width:30,height:30,borderRadius:8,background:T.bg3,border:`1px solid ${T.b2}`,display:'flex',alignItems:'center',justifyContent:'center',color:T.gold,fontSize:14,flexShrink:0}}>☽</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,color:T.gold,fontWeight:500,marginBottom:2}}>MindScape</div>
+                  <div style={{fontSize:13,color:T.cream,lineHeight:1.4}}>Sua sombra deseja ser ouvida. Jung está esperando.</div>
+                </div>
+              </div>
+            </div>
+
+            {notifChoice==='granted'&&<div style={{color:T.gold,fontSize:13,marginBottom:14}}>✓ Permissão concedida</div>}
+            {notifChoice==='denied'&&<div style={{color:T.muted,fontSize:13,marginBottom:14}}>Você pode ativar mais tarde nas configurações</div>}
+            {notifChoice==='unsupported'&&<div style={{color:T.muted,fontSize:13,marginBottom:14}}>Notificações não disponíveis neste dispositivo</div>}
+            {notifChoice==='skipped'&&<div style={{color:T.muted,fontSize:13,marginBottom:14}}>Sem problemas, vamos seguir</div>}
+
+            {!notifChoice&&(
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                <button onClick={requestNotifications} style={{padding:'13px 32px',background:T.gold,border:'none',borderRadius:30,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1,cursor:'pointer',fontWeight:500}}>Ativar lembretes</button>
+                <button onClick={skipNotifications} style={{padding:'10px',background:'transparent',border:'none',color:T.muted,fontFamily:"'Jost',sans-serif",fontSize:12,cursor:'pointer'}}>Talvez mais tarde</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 6 — Trial start */}
+        {step===6&&(
+          <div style={{animation:'fadeUp .5s ease',textAlign:'center'}}>
+            <div style={{fontSize:42,color:T.gold,marginBottom:14,animation:'pulse 1.5s ease 3'}}>◈</div>
+            <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:10}}>Seus 7 dias grátis começam agora</div>
+            <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:30,fontWeight:300,color:T.cream,marginBottom:14,lineHeight:1.2}}>Bem-vindo à <span style={{color:T.gold,fontStyle:'italic'}}>MindScape</span></h2>
+            <p style={{fontSize:15,color:T.cream2,lineHeight:1.7,marginBottom:30,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif"}}>Acesso completo a todos os rituais. Sem cobranças automáticas. Cancele quando quiser.</p>
+
+            <div style={{background:T.bg2,border:`1px solid ${T.b2}`,borderRadius:14,padding:'14px 18px',marginBottom:22,textAlign:'left'}}>
+              {[
+                {icon:'✦',t:'10 rituais com Jung, Freud, Frankl, Lacan, Foucault'},
+                {icon:'☽',t:'Conversas com IA-Jung sobre sua sombra'},
+                {icon:'Ψ',t:'Interpretação freudiana de sonhos'},
+                {icon:'◇',t:'Acompanhamento de humor e progresso'},
+              ].map((b,i)=>(
+                <div key={i} style={{display:'flex',gap:12,alignItems:'center',padding:'8px 0',borderBottom:i<3?`1px solid ${T.b1}`:'none'}}>
+                  <span style={{color:T.gold,fontSize:16,width:20,textAlign:'center'}}>{b.icon}</span>
+                  <span style={{fontSize:13,color:T.cream,lineHeight:1.4}}>{b.t}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={finish} style={{width:'100%',padding:'14px',background:T.gold,border:'none',borderRadius:30,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1.5,cursor:'pointer',fontWeight:500,textTransform:'uppercase'}}>Iniciar minha prática</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── MOOD CHECK-IN ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+function MoodCheckin({onDone,onSkip}){
+  const[picked,setPicked]=useState(null);
+
+  function confirm(){
+    if(!picked)return;
+    const log=LS.get('ms_mood_log',[]);
+    log.push({mood:picked,ts:Date.now()});
+    LS.set('ms_mood_log',log);
+    LS.set('ms_mood_today',new Date().toDateString());
+    onDone(picked);
+  }
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.92)',backdropFilter:'blur(8px)',zIndex:250,display:'flex',alignItems:'flex-end',animation:'fadeIn .3s ease'}}>
+      <div style={{width:'100%',maxHeight:'85vh',background:T.bg2,borderTop:`1px solid ${T.b2}`,borderRadius:'22px 22px 0 0',overflowY:'auto',animation:'fadeUp .4s ease'}}>
+        <div style={{width:36,height:3,background:T.muted,borderRadius:3,margin:'14px auto 0'}}/>
+        <div style={{padding:'18px 22px 28px'}}>
+          <div style={{textAlign:'center',marginBottom:22}}>
+            <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:8}}>Check-in diário</div>
+            <h3 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300,color:T.cream,marginBottom:6,lineHeight:1.2}}>Como você está agora?</h3>
+            <p style={{fontSize:13,color:T.cream2,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif"}}>Nomear o sentir é o início do compreender.</p>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:22}}>
+            {MOODS.map(m=>{
+              const sel=picked===m.id;
+              return(
+                <button key={m.id} onClick={()=>setPicked(m.id)} style={{aspectRatio:'1',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,background:sel?'rgba(200,151,58,0.12)':T.bg3,border:`1.5px solid ${sel?T.gold:T.b1}`,borderRadius:14,cursor:'pointer',padding:8,transition:'all .2s',transform:sel?'scale(1.04)':'scale(1)'}}>
+                  <span style={{fontSize:22,color:sel?T.gold:m.color,filter:sel?'none':'opacity(.85)'}}>{m.icon}</span>
+                  <span style={{fontSize:10,color:sel?T.gold:T.cream2,letterSpacing:.3}}>{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button onClick={confirm} disabled={!picked} style={{width:'100%',padding:13,background:picked?T.gold:'transparent',border:`1px solid ${picked?T.gold:T.b1}`,borderRadius:30,color:picked?T.bg:T.muted,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1,cursor:picked?'pointer':'default',fontWeight:500,marginBottom:8}}>Continuar</button>
+          <button onClick={onSkip} style={{width:'100%',padding:8,background:'transparent',border:'none',color:T.muted,fontSize:11,cursor:'pointer'}}>Pular hoje</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── PAYWALL (após trial) ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+function Paywall({onSubscribe,onClose,canClose=false}){
+  const[plan,setPlan]=useState('yearly');
+  const monthlyEquiv=(SUB_YEARLY/12).toFixed(2);
+  const savings=Math.round((1-(SUB_YEARLY/12)/SUB_MONTHLY)*100);
+
+  function subscribe(){
+    LS.set('ms_subscribed',true);
+    LS.set('ms_sub_plan',plan);
+    LS.set('ms_sub_start',Date.now());
+    onSubscribe();
+  }
+
+  return(
+    <div style={{position:'fixed',inset:0,background:T.bg,zIndex:280,display:'flex',flexDirection:'column',animation:'fadeIn .4s ease'}}>
+      <div style={{flex:1,overflowY:'auto',padding:'30px 24px 24px'}}>
+        {canClose&&<button onClick={onClose} style={{position:'absolute',top:18,right:18,background:'none',border:'none',color:T.muted,fontSize:22,cursor:'pointer',padding:8,zIndex:10}}>✕</button>}
+
+        <div style={{textAlign:'center',marginBottom:24}}>
+          <div style={{fontSize:42,color:T.gold,marginBottom:10}}>◈</div>
+          <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:10}}>Continue sua jornada</div>
+          <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:30,fontWeight:300,color:T.cream,marginBottom:10,lineHeight:1.2}}>MindScape <span style={{color:T.gold,fontStyle:'italic'}}>Premium</span></h2>
+          <p style={{fontSize:14,color:T.cream2,lineHeight:1.6,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif"}}>Sua sequência permanece. Seus rituais aguardam.</p>
+        </div>
+
+        {/* Plans */}
+        <div style={{marginBottom:18}}>
+          <div onClick={()=>setPlan('yearly')} style={{position:'relative',background:plan==='yearly'?'rgba(200,151,58,0.08)':T.bg2,border:`2px solid ${plan==='yearly'?T.gold:T.b1}`,borderRadius:16,padding:'16px 18px',marginBottom:10,cursor:'pointer',transition:'all .2s'}}>
+            <div style={{position:'absolute',top:-10,right:18,background:T.gold,color:T.bg,fontSize:9,letterSpacing:1.5,padding:'3px 10px',borderRadius:10,fontWeight:500,textTransform:'uppercase'}}>Economia {savings}%</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.cream}}>Anual</span>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>${SUB_YEARLY}</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:T.cream2}}>
+              <span>${monthlyEquiv}/mês equivalente</span>
+              <span>cobrado anualmente</span>
+            </div>
+          </div>
+
+          <div onClick={()=>setPlan('monthly')} style={{background:plan==='monthly'?'rgba(200,151,58,0.08)':T.bg2,border:`2px solid ${plan==='monthly'?T.gold:T.b1}`,borderRadius:16,padding:'16px 18px',cursor:'pointer',transition:'all .2s'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.cream}}>Mensal</span>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>${SUB_MONTHLY}</span>
+            </div>
+            <div style={{fontSize:12,color:T.cream2}}>Flexível, cancele quando quiser</div>
+          </div>
+        </div>
+
+        {/* Benefits */}
+        <div style={{background:T.bg2,border:`1px solid ${T.b1}`,borderRadius:14,padding:'14px 18px',marginBottom:18}}>
+          {[
+            'Todos os 10+ rituais com os grandes pensadores',
+            'Conversas ilimitadas com IA-Jung e IA-Freud',
+            'Sons binaurais, vozes guiadas, ambiente premium',
+            'Histórico completo, gráficos de humor, exportação',
+            'Cancele quando quiser, sem perguntas',
+          ].map((t,i,a)=>(
+            <div key={i} style={{display:'flex',gap:12,alignItems:'center',padding:'7px 0',borderBottom:i<a.length-1?`1px solid ${T.b1}`:'none'}}>
+              <span style={{color:T.gold,fontSize:13}}>✦</span>
+              <span style={{fontSize:13,color:T.cream,lineHeight:1.4}}>{t}</span>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={subscribe} style={{width:'100%',padding:'14px',background:T.gold,border:'none',borderRadius:30,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1.5,cursor:'pointer',fontWeight:500,textTransform:'uppercase',marginBottom:10}}>{plan==='yearly'?`Assinar por $${SUB_YEARLY}/ano`:`Assinar por $${SUB_MONTHLY}/mês`}</button>
+        <p style={{fontSize:10,color:T.muted,textAlign:'center',lineHeight:1.5}}>Pagamento via App Store/Google Play. Renova automaticamente. Cancele a qualquer momento nas configurações da loja.</p>
+      </div>
+    </div>
+  );
+}
+
+// ── AD BANNER (escondido durante trial / assinatura) ──────────────────────────
+const ADS=[
+  {text:'BetterHelp — Terapia profissional online. Comece sua jornada hoje.',cta:'Testar Grátis'},
+  {text:'Headspace — Meditação guiada para uma mente mais calma.',cta:'Saiba Mais'},
+];
+function AdBanner(){
+  const[i,setI]=useState(0);
+  useEffect(()=>{const t=setInterval(()=>setI(x=>(x+1)%ADS.length),11000);return()=>clearInterval(t);},[]);
+  return(
+    <div style={{background:T.bg2,borderBottom:`1px solid ${T.b1}`,padding:'6px 14px',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+      <span style={{fontSize:9,letterSpacing:2,color:T.muted,border:`1px solid ${T.muted}`,padding:'2px 5px',borderRadius:3}}>ANÚNCIO</span>
+      <span style={{fontSize:11,color:T.cream2,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ADS[i].text}</span>
+      <span style={{fontSize:11,color:T.gold,border:`1px solid ${T.b2}`,padding:'3px 10px',borderRadius:20,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>{ADS[i].cta}</span>
+    </div>
+  );
+}
+
+// ── TRIAL BANNER ──────────────────────────────────────────────────────────────
+function TrialBanner({daysLeft,onUpgrade}){
+  const urgent=daysLeft<=2;
+  return(
+    <div onClick={onUpgrade} style={{background:urgent?'rgba(200,151,58,0.12)':T.bg2,borderBottom:`1px solid ${urgent?T.b2:T.b1}`,padding:'7px 14px',display:'flex',alignItems:'center',gap:10,flexShrink:0,cursor:'pointer'}}>
+      <span style={{fontSize:9,letterSpacing:2,color:T.gold,border:`1px solid ${T.b2}`,padding:'2px 6px',borderRadius:3}}>TRIAL</span>
+      <span style={{fontSize:11,color:T.cream2,flex:1}}>{daysLeft===0?'Trial expirado':daysLeft===1?'Último dia · ':`${daysLeft} dias restantes · `}<span style={{color:T.gold}}>Toque para continuar</span></span>
+      <span style={{fontSize:11,color:T.gold,fontWeight:500}}>›</span>
+    </div>
+  );
+}
+
+// ── MEDAL TOAST ───────────────────────────────────────────────────────────────
+function MedalToast({medal,onDone}){
+  useEffect(()=>{const t=setTimeout(onDone,4200);return()=>clearTimeout(t);},[]);
+  return(
+    <div style={{position:'fixed',top:64,left:'50%',transform:'translateX(-50%)',zIndex:999,animation:'pop .5s ease',maxWidth:300,width:'calc(100% - 36px)'}}>
+      <div style={{background:T.bg2,border:`2px solid ${T.gold}`,borderRadius:16,padding:'16px 20px',textAlign:'center',boxShadow:'0 0 40px rgba(200,151,58,0.22)'}}>
+        <div style={{fontSize:38,marginBottom:6}}>{medal.icon}</div>
+        <div style={{fontSize:9,letterSpacing:2,color:T.gold,textTransform:'uppercase',marginBottom:2}}>Novo posto desbloqueado</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold,marginBottom:4}}>{medal.name}</div>
+        <div style={{fontSize:12,color:T.cream2,marginBottom:8}}>{medal.note}</div>
+        <div style={{fontSize:13,color:T.gold2,fontWeight:500}}>+₣20 Franckls</div>
+      </div>
+    </div>
+  );
+}
+
+// ── RITUAL MODAL ──────────────────────────────────────────────────────────────
+function RitualModal({ritual,onClose,onDone}){
+  const[step,setStep]=useState('intro');
+  const[text,setText]=useState('');
+  const[aiReply,setAiReply]=useState('');
+  const[loading,setLoading]=useState(false);
+  const[breathPhase,setBreathPhase]=useState('inhale');
+  const[breathCycle,setBreathCycle]=useState(0);
+  const[relaxBeat,setRelaxBeat]=useState(0);
+  const[soundOn,setSoundOn]=useState(true);
+  const[saved,setSaved]=useState(false);
+  const audio=useRef(null);
+  const timer=useRef(null);
+
+  useEffect(()=>{
+    audio.current=makeAudio();
+    return()=>{
+      audio.current.stop();
+      clearInterval(timer.current);
+      window.speechSynthesis&&speechSynthesis.cancel();
+    };
+  },[]);
+
+  function startActivity(){
+    setStep('active');
+    audio.current.start();
+    if(ritual.type==='breath')startBreath();
+    if(ritual.type==='relax')startRelax();
+    if(ritual.type==='move')say('Fique em pé. Sinta o chão sob seus pés. Lentamente escaneie da cabeça aos pés. Onde seu corpo guarda tensão?');
+  }
+
+  function startBreath(){
+    const SEQ=[
+      {p:'inhale',s:4,cue:'Inspire lentamente… um… dois… três… quatro…'},
+      {p:'hold',  s:7,cue:'Segure… um… dois… três… quatro… cinco… seis… sete…'},
+      {p:'exhale',s:8,cue:'Expire lentamente… um… dois… três… quatro… cinco… seis… sete… oito…'},
+    ];
+    let si=0,tick=0,cycles=0;
+    setBreathPhase('inhale');
+    say(SEQ[0].cue);
+    timer.current=setInterval(()=>{
+      tick++;
+      if(tick>=SEQ[si].s){
+        tick=0;si=(si+1)%3;
+        if(si===0){cycles++;setBreathCycle(cycles);}
+        if(cycles>=4){
+          clearInterval(timer.current);
+          audio.current.stop();
+          speechSynthesis.cancel();
+          setStep(ritual.type==='dream'?'dream':'done');
+          if(ritual.type!=='dream')onDone(ritual.id);
+          return;
+        }
+        setBreathPhase(SEQ[si].p);
+        say(SEQ[si].cue);
+      }
+    },1000);
+  }
+
+  function startRelax(){
+    let b=0;
+    say('Começamos o relaxamento progressivo. Siga o guia corporal.');
+    timer.current=setInterval(()=>{
+      b++;setRelaxBeat(b);
+      const idx=Math.min(Math.floor(b/3),RELAX_PARTS.length-1);
+      if(b%3===1&&b>1)say(RELAX_PARTS[idx].cue);
+      if(b>=RELAX_PARTS.length*3+1){
+        clearInterval(timer.current);
+        audio.current.stop();
+        say('Lindo. Seu corpo está em repouso. Durma bem.');
+        setTimeout(()=>{setStep('done');onDone(ritual.id);},3500);
+      }
+    },3500);
+  }
+
+  async function submitAI(){
+    if(!text.trim())return;
+    setLoading(true);
+    setStep('ai');
+    try{
+      const system=ritual.type==='shadow'?JUNG_SYS:FREUD_SYS;
+      const prompt=ritual.type==='shadow'?`O que me perturbou hoje: "${text}"`:`Meu sonho: "${text}"`;
+      const reply=await callAI(system,prompt);
+      setAiReply(reply||'O inconsciente raramente tem pressa. Sente-se com o que surgiu hoje.');
+    }catch{
+      setAiReply(ritual.type==='shadow'
+        ?'O que você nomeou esta noite já começa a se transformar. Volte a estas palavras amanhã.\n\n— Jung'
+        :'A conexão foi interrompida. Sente-se com a imagem que seu sonho deixou.\n\n— Freud');
+    }
+    setLoading(false);
+  }
+
+  function saveEntry(){
+    const k=`ms_entry_${ritual.id}_${new Date().toISOString().split('T')[0]}`;
+    LS.set(k,text);setSaved(true);
+  }
+
+  const relaxIdx=Math.min(Math.floor(relaxBeat/3),RELAX_PARTS.length-1);
+  const authorLabel=ritual.type==='shadow'?'Jung':'Freud';
+  const aiLabel=ritual.type==='shadow'?"Reflexão de Jung":"Interpretação de Freud";
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'flex-end',zIndex:200,backdropFilter:'blur(6px)'}}>
+      <div style={{width:'100%',maxHeight:'92vh',background:T.bg2,borderTop:`1px solid ${T.b2}`,borderRadius:'22px 22px 0 0',overflowY:'auto',animation:'fadeUp .4s ease'}}>
+        <div style={{width:36,height:3,background:T.muted,borderRadius:3,margin:'14px auto 0'}}/>
+        <div style={{padding:'14px 20px 0',borderBottom:`1px solid ${T.b1}`,display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div>
+            <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:3}}>{ritual.author}</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.cream,marginBottom:14}}>{ritual.icon} {ritual.title}</div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:T.muted,fontSize:20,cursor:'pointer',padding:4,marginTop:4}}>✕</button>
+        </div>
+        <div style={{padding:20}}>
+          {step==='intro'&&(
+            <div style={{textAlign:'center',paddingBottom:8}}>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:38,color:T.gold,opacity:.4,marginBottom:14}}>{ritual.icon}</div>
+              <p style={{fontSize:16,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:T.cream2,lineHeight:1.75,marginBottom:10,whiteSpace:'pre-wrap'}}>{ritual.prompt||ritual.desc}</p>
+              {(ritual.type==='journal'||ritual.type==='shadow')&&(
+                <div>
+                  <textarea
+                    value={text} onChange={e=>setText(e.target.value)}
+                    placeholder="Escreva livremente aqui…" rows={4} autoFocus
+                    style={{width:'100%',background:T.bg3,border:`1px solid ${T.b1}`,borderRadius:10,padding:'12px 14px',color:T.cream,fontSize:16,lineHeight:1.8,fontFamily:"'Cormorant Garamond',serif",marginBottom:14}}
+                  />
+                  {ritual.type==='shadow'?(
+                    <button onClick={submitAI} disabled={!text.trim()} style={{width:'100%',padding:12,background:text.trim()?T.gold:'transparent',border:`1px solid ${text.trim()?T.gold:T.b1}`,borderRadius:24,color:text.trim()?T.bg:T.muted,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:text.trim()?'pointer':'default',fontWeight:500}}>
+                      Enviar para Jung →
+                    </button>
+                  ):(
+                    <div style={{display:'flex',gap:8}}>
+                      <button onClick={saveEntry} disabled={!text.trim()||saved} style={{flex:1,padding:10,background:'transparent',border:`1px solid ${T.b2}`,borderRadius:24,color:T.gold,fontFamily:"'Jost',sans-serif",fontSize:12,cursor:text.trim()&&!saved?'pointer':'default'}}>
+                        {saved?'Salvo ✦':'Salvar'}
+                      </button>
+                      <button onClick={()=>{if(text.trim())saveEntry();setStep('done');onDone(ritual.id);}} style={{flex:2,padding:10,background:T.gold,border:'none',borderRadius:24,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',fontWeight:500}}>
+                        Concluir ✦
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {(ritual.type==='breath'||ritual.type==='relax'||ritual.type==='move')&&(
+                <button onClick={startActivity} style={{marginTop:16,padding:'13px 42px',background:T.gold,border:'none',borderRadius:30,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:14,letterSpacing:1,cursor:'pointer',fontWeight:500}}>
+                  Iniciar {ritual.title}
+                </button>
+              )}
+              {ritual.type==='dream'&&(
+                <div>
+                  <textarea
+                    value={text} onChange={e=>setText(e.target.value)}
+                    placeholder="Ontem à noite eu sonhei que…" rows={3}
+                    style={{width:'100%',background:T.bg3,border:`1px solid ${T.b1}`,borderRadius:10,padding:'12px 14px',color:T.cream,fontSize:16,lineHeight:1.8,fontFamily:"'Cormorant Garamond',serif",marginBottom:12}}
+                  />
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>{setStep('done');onDone(ritual.id);}} style={{flex:1,padding:10,background:'transparent',border:`1px solid ${T.b1}`,borderRadius:24,color:T.muted,fontFamily:"'Jost',sans-serif",fontSize:12,cursor:'pointer'}}>
+                      Sem sonho lembrado
+                    </button>
+                    <button onClick={submitAI} disabled={!text.trim()} style={{flex:2,padding:10,background:text.trim()?T.gold:'transparent',border:`1px solid ${text.trim()?T.gold:T.b1}`,borderRadius:24,color:text.trim()?T.bg:T.muted,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:text.trim()?'pointer':'default',fontWeight:500}}>
+                      Interpretar com Freud →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step==='active'&&(
+            <div>
+              {ritual.type==='breath'&&(
+                <div>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                    <div style={{fontSize:12,color:T.muted}}>Ciclo {breathCycle+1} de 4</div>
+                    <button onClick={()=>{setSoundOn(s=>{const n=!s;n?audio.current.start():audio.current.stop();return n;})}} style={{fontSize:11,color:soundOn?T.gold:T.muted,background:'none',border:`1px solid ${T.b1}`,padding:'3px 12px',borderRadius:20,cursor:'pointer'}}>
+                      ♪ {soundOn?'On':'Off'}
+                    </button>
+                  </div>
+                  <BreathCircle phase={breathPhase}/>
+                </div>
+              )}
+              {ritual.type==='relax'&&(
+                <div>
+                  <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
+                    <button onClick={()=>{setSoundOn(s=>{const n=!s;n?audio.current.start():audio.current.stop();return n;})}} style={{fontSize:11,color:soundOn?T.gold:T.muted,background:'none',border:`1px solid ${T.b1}`,padding:'3px 12px',borderRadius:20,cursor:'pointer'}}>
+                      ♪ {soundOn?'On':'Off'}
+                    </button>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+                    <Vitruvian hl={RELAX_PARTS[relaxIdx].id}/>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{fontSize:14,color:T.gold,letterSpacing:1,marginBottom:4}}>{RELAX_PARTS[relaxIdx].label}</div>
+                      <p style={{fontSize:15,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:T.cream2,lineHeight:1.6}}>{RELAX_PARTS[relaxIdx].cue}</p>
+                      <div style={{display:'flex',gap:4,justifyContent:'center',marginTop:10}}>
+                        {RELAX_PARTS.map((_,i)=>(
+                          <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===relaxIdx?T.gold:i<relaxIdx?T.muted:T.bg4,transition:'all .4s'}}/>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {ritual.type==='move'&&(
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
+                  <Vitruvian hl="none"/>
+                  <p style={{fontSize:15,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:T.cream2,lineHeight:1.7,textAlign:'center'}}>{ritual.prompt}</p>
+                  <button onClick={()=>{audio.current.stop();setStep('done');onDone(ritual.id);}} style={{padding:'10px 28px',background:T.gold,border:'none',borderRadius:24,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',fontWeight:500}}>
+                    Concluir ✦
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(step==='ai')&&(
+            <div>
+              <div style={{background:T.bg3,border:`1px solid ${T.b1}`,borderRadius:10,padding:'12px 14px',marginBottom:16,fontStyle:'italic',color:T.cream2,fontSize:15,fontFamily:"'Cormorant Garamond',serif",lineHeight:1.7}}>
+                "{text}"
+              </div>
+              {loading?(
+                <div style={{textAlign:'center',padding:'28px 0'}}>
+                  <div style={{fontSize:28,color:T.gold,marginBottom:10,animation:'shimmer 1.4s ease-in-out infinite'}}>{ritual.type==='shadow'?'☽':'Ψ'}</div>
+                  <p style={{fontSize:15,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:T.muted}}>{authorLabel} está refletindo…</p>
+                </div>
+              ):(
+                <div>
+                  <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:8}}>{aiLabel}</div>
+                  <p style={{fontSize:16,color:T.cream,lineHeight:1.85,fontFamily:"'Cormorant Garamond',serif",marginBottom:20,whiteSpace:'pre-wrap'}}>{aiReply}</p>
+                  <button onClick={()=>{setStep('done');onDone(ritual.id);}} style={{width:'100%',padding:12,background:T.gold,border:'none',borderRadius:24,color:T.bg,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',fontWeight:500}}>
+                    Concluir ✦
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step==='done'&&(
+            <div style={{textAlign:'center',paddingBottom:8}}>
+              <div style={{fontSize:44,color:T.gold,marginBottom:12,animation:'pulse 1.2s ease 3'}}>{ritual.icon}</div>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold,marginBottom:8}}>Concluído</div>
+              <p style={{fontSize:15,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif",color:T.cream2,lineHeight:1.7}}>
+                {ritual.type==='breath'?'Seu sistema nervoso está mais calmo. Leve essa quietude adiante.'
+                  :ritual.type==='relax'?'Seu corpo está em repouso. Sono é a forma mais profunda de confiança.'
+                  :ritual.type==='move'?'Seu corpo falou. Integração começa com consciência.'
+                  :'Sua reflexão foi registrada.'}
+              </p>
+              <button onClick={onClose} style={{marginTop:20,padding:'10px 28px',background:'transparent',border:`1px solid ${T.b2}`,borderRadius:24,color:T.gold,fontFamily:"'Jost',sans-serif",fontSize:13,cursor:'pointer',width:'100%'}}>
+                Fechar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RITUAL CARD ───────────────────────────────────────────────────────────────
+function RitualCard({ritual,checked,onTap,canAdd,onAddTo,inSession}){
+  return(
+    <div style={{background:checked?'rgba(200,151,58,0.07)':T.bg2,border:`1px solid ${checked?T.b2:T.b1}`,borderRadius:14,padding:'14px 16px',marginBottom:10,transition:'all .25s'}}>
+      <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
+        <div onClick={onTap} style={{width:26,height:26,borderRadius:'50%',flexShrink:0,marginTop:2,border:`1.5px solid ${checked?T.gold:T.muted}`,background:checked?T.gold:'transparent',display:'flex',alignItems:'center',justifyContent:'center',color:T.bg,fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .25s'}}>
+          {checked?'✓':''}
+        </div>
+        <div style={{flex:1,cursor:'pointer'}} onClick={onTap}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+            <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:500,color:checked?T.gold:T.cream}}>{ritual.icon} {ritual.title}</span>
+            <span style={{fontSize:10,color:T.muted,letterSpacing:.5}}>{ritual.time}</span>
+          </div>
+          <div style={{fontSize:9,letterSpacing:2,color:T.gold,opacity:.7,textTransform:'uppercase',marginBottom:5}}>{ritual.author}</div>
+          <p style={{fontSize:13,color:T.cream2,lineHeight:1.55,opacity:checked?.55:1}}>{ritual.desc}</p>
+          <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+            <span style={{fontSize:10,color:T.gold,background:'rgba(200,151,58,0.08)',border:`1px solid ${T.b1}`,padding:'3px 10px',borderRadius:20}}>
+              {ritual.type==='journal'?'✎ Diário':ritual.type==='breath'?'◎ Respiração':ritual.type==='relax'?'○ Relaxamento':ritual.type==='shadow'?'✦ Sombra':ritual.type==='dream'?'Ψ Sonho':'○ Movimento'}
+            </span>
+            {inSession&&<span style={{fontSize:10,color:T.cream2,background:T.bg3,border:`1px solid ${T.b1}`,padding:'3px 10px',borderRadius:20}}>na sequência</span>}
+            {!inSession&&canAdd&&(
+              <span onClick={e=>{e.stopPropagation();onAddTo();}} style={{fontSize:10,color:T.gold2,background:'rgba(232,184,75,0.08)',border:`1px solid rgba(232,184,75,0.3)`,padding:'3px 10px',borderRadius:20,cursor:'pointer'}}>+ Adicionar</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RITUALS SCREEN ────────────────────────────────────────────────────────────
+function RitualsScreen({session,sequence,setSequence,checked,setChecked,todayMood}){
+  const[activeRitual,setActiveRitual]=useState(null);
+  const label=session==='morning'?'☀ Despertar Matinal':'☽ Prática Noturna';
+  const sublabel=session==='morning'?'Prepare sua mente para o dia.':'Reflita, libere e descanse.';
+  const rituals=RITUALS.filter(r=>r.session===session);
+  const mySeq=sequence[session]||[];
+  const seqRituals=mySeq.map(id=>rituals.find(r=>r.id===id)).filter(Boolean);
+  const done=mySeq.filter(id=>checked[id]).length;
+  const pct=mySeq.length?Math.round(done/mySeq.length*100):0;
+
+  const moodObj=todayMood?MOODS.find(m=>m.id===todayMood):null;
+
+  function addToSeq(id){
+    const ns={...sequence,[session]:[...(sequence[session]||[]),id]};
+    setSequence(ns);LS.set('ms_sequence',ns);
+  }
+  function onDone(id){
+    setChecked(c=>{const n={...c,[id]:true};LS.set('ms_checked',n);return n;});
+    setActiveRitual(null);
+  }
+
+  return(
+    <div style={{height:'100%',overflowY:'auto',padding:'20px 18px 100px'}}>
+      <div style={{marginBottom:18}}>
+        <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:4}}>Prática diária</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300}}>{label}</div>
+        <p style={{fontSize:13,color:T.cream2,marginTop:5,lineHeight:1.6}}>{sublabel}</p>
+        {moodObj&&(
+          <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:10,padding:'4px 10px',background:T.bg3,border:`1px solid ${T.b1}`,borderRadius:20}}>
+            <span style={{fontSize:12,color:moodObj.color}}>{moodObj.icon}</span>
+            <span style={{fontSize:11,color:T.cream2}}>Hoje você está {moodObj.label.toLowerCase()}</span>
+          </div>
+        )}
+      </div>
+      {mySeq.length>0&&(
+        <div style={{marginBottom:16}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:7}}>
+            <span style={{fontSize:12,color:T.cream2}}>{done}/{mySeq.length} concluídos</span>
+            <span style={{fontSize:12,color:T.gold}}>{pct}%</span>
+          </div>
+          <div style={{height:3,background:T.bg3,borderRadius:3}}>
+            <div style={{height:'100%',width:pct+'%',background:T.gold,borderRadius:3,transition:'width .4s'}}/>
+          </div>
+        </div>
+      )}
+      {seqRituals.map(r=>(
+        <RitualCard key={r.id} ritual={r} checked={!!checked[r.id]} onTap={()=>setActiveRitual(r)} canAdd={false} inSession={true} onAddTo={null}/>
+      ))}
+      {rituals.filter(r=>!mySeq.includes(r.id)).length>0&&(
+        <div>
+          <div style={{fontSize:9,letterSpacing:2,color:T.muted,textTransform:'uppercase',marginTop:20,marginBottom:10}}>Outros rituais disponíveis</div>
+          {rituals.filter(r=>!mySeq.includes(r.id)).map(r=>(
+            <RitualCard key={r.id} ritual={r} checked={false} onTap={()=>setActiveRitual(r)} canAdd={true} inSession={false} onAddTo={()=>addToSeq(r.id)}/>
+          ))}
+        </div>
+      )}
+      {activeRitual&&<RitualModal ritual={activeRitual} onClose={()=>setActiveRitual(null)} onDone={onDone}/>}
+    </div>
+  );
+}
+
+// ── SHOP SCREEN (cosmético) ───────────────────────────────────────────────────
+function ShopScreen({franckls,onBuy}){
+  const[cat,setCat]=useState('Proteção');
+  const[owned,setOwned]=useState(()=>LS.get('ms_owned_items',[]));
+  const[toast,setToast]=useState('');
+  const cats=[...new Set(SHOP.map(i=>i.cat))];
+  const items=SHOP.filter(i=>i.cat===cat);
+
+  function buy(item){
+    if(owned.includes(item.id)){setToast(`Você já possui ${item.name}`);setTimeout(()=>setToast(''),2500);return;}
+    if(franckls<item.price){setToast(`Faltam ₣${item.price-franckls} Franckls`);setTimeout(()=>setToast(''),2500);return;}
+    onBuy(item);
+    const no=[...owned,item.id];setOwned(no);LS.set('ms_owned_items',no);
+    setToast(`✦ ${item.name} desbloqueado!`);
+    setTimeout(()=>setToast(''),3000);
+  }
+
+  return(
+    <div style={{height:'100%',overflowY:'auto',padding:'20px 18px 100px'}}>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:4}}>Loja cosmética</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300}}>◈ Personalize</div>
+        <p style={{fontSize:13,color:T.cream2,marginTop:5,lineHeight:1.6}}>Use Franckls (ganhe completando rituais) para temas, sons e proteções.</p>
+      </div>
+      {toast&&<div style={{background:'rgba(200,151,58,0.12)',border:`1px solid ${T.b2}`,borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:13,color:T.gold,animation:'fadeUp .3s ease'}}>{toast}</div>}
+
+      <div style={{background:T.bg2,border:`1px solid ${T.b2}`,borderRadius:12,padding:'12px 16px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div style={{fontSize:11,color:T.gold,letterSpacing:1,marginBottom:2}}>Seu saldo</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:T.gold}}>₣{franckls}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:10,color:T.muted,marginBottom:2}}>Como ganhar</div>
+          <div style={{fontSize:11,color:T.cream2,lineHeight:1.4}}>+₣10 por dia<br/>+₣20 por marco</div>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:4,marginBottom:16,scrollbarWidth:'none'}}>
+        {cats.map(c=>(
+          <button key={c} onClick={()=>setCat(c)} style={{padding:'6px 14px',borderRadius:20,border:`1px solid ${cat===c?T.gold:T.b1}`,background:cat===c?'rgba(200,151,58,0.1)':'transparent',color:cat===c?T.gold:T.muted,fontFamily:"'Jost',sans-serif",fontSize:11,cursor:'pointer',whiteSpace:'nowrap',transition:'all .2s'}}>
+            {c}
+          </button>
+        ))}
+      </div>
+
+      {items.map(item=>{
+        const isOwned=owned.includes(item.id);
+        const canAfford=franckls>=item.price;
+        return(
+          <div key={item.id} style={{background:T.bg2,border:`1px solid ${isOwned?T.b2:T.b1}`,borderRadius:14,padding:'14px 16px',marginBottom:10,display:'flex',gap:14,alignItems:'center',opacity:isOwned?.85:1}}>
+            <div style={{width:44,height:44,borderRadius:10,background:'rgba(200,151,58,0.1)',border:`1px solid ${T.b2}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,color:T.gold,flexShrink:0}}>{item.icon}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:16,color:T.cream,marginBottom:3}}>{item.name}</div>
+              <p style={{fontSize:12,color:T.cream2,lineHeight:1.5,marginBottom:8}}>{item.desc}</p>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:13,color:T.gold,fontWeight:500}}>₣{item.price}</span>
+                <button onClick={()=>buy(item)} disabled={isOwned} style={{padding:'5px 16px',background:isOwned?'transparent':canAfford?T.gold:'transparent',border:`1px solid ${isOwned||!canAfford?T.b2:T.gold}`,borderRadius:20,color:isOwned?T.muted:canAfford?T.bg:T.muted,fontFamily:"'Jost',sans-serif",fontSize:12,cursor:isOwned?'default':'pointer',fontWeight:500}}>
+                  {isOwned?'✓ Tem':canAfford?'Resgatar':'Insuficiente'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── PROGRESS SCREEN (com gráfico de humor) ────────────────────────────────────
+function MoodChart({moodLog}){
+  if(!moodLog||moodLog.length===0)return(
+    <div style={{padding:'24px 0',textAlign:'center',color:T.muted,fontSize:12,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif"}}>
+      Faça seu check-in diário para ver sua jornada emocional aqui.
+    </div>
+  );
+
+  const last7=moodLog.slice(-7);
+  const W=300,H=80,pad=8;
+  const pts=last7.map((e,i)=>{
+    const m=MOODS.find(x=>x.id===e.mood);
+    const idx=MOODS.findIndex(x=>x.id===e.mood);
+    return{x:pad+(i*(W-pad*2)/Math.max(last7.length-1,1)),y:pad+(idx*(H-pad*2)/(MOODS.length-1)),color:m?.color||T.gold,label:m?.label||''};
+  });
+
+  return(
+    <div style={{padding:'8px 0'}}>
+      <svg width="100%" height={H+24} viewBox={`0 0 ${W} ${H+24}`} preserveAspectRatio="none">
+        <line x1={pad} y1={H/2+pad/2} x2={W-pad} y2={H/2+pad/2} stroke={T.b1} strokeWidth=".5" strokeDasharray="2 4"/>
+        {pts.length>1&&(
+          <polyline fill="none" stroke={T.gold} strokeWidth="1.2" opacity=".5"
+            points={pts.map(p=>`${p.x},${p.y}`).join(' ')}/>
+        )}
+        {pts.map((p,i)=>(
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r="4" fill={p.color}/>
+            <text x={p.x} y={H+18} textAnchor="middle" fontSize="9" fill={T.muted}>D{last7.length-i}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function ProgressScreen({streak,franckls,unlocked,moodLog}){
+  const lastMedal=[...MEDALS].reverse().find(m=>unlocked.includes(m.name));
+  const nextMedal=MEDALS.find(m=>!unlocked.includes(m.name));
+  const pct=nextMedal?Math.min((streak/nextMedal.days)*100,100):100;
+
+  return(
+    <div style={{height:'100%',overflowY:'auto',padding:'20px 18px 100px'}}>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:9,letterSpacing:3,color:T.gold,textTransform:'uppercase',marginBottom:4}}>Sua jornada</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:300}}>Progresso & Posto</div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+        {[
+          {label:'Sequência',value:streak+'🔥',sub:streak===1?'1 dia':streak+' dias'},
+          {label:'Franckls',  value:'₣'+franckls,sub:'cosméticos & proteções'},
+        ].map(s=>(
+          <div key={s.label} style={{background:T.bg2,border:`1px solid ${T.b2}`,borderRadius:14,padding:'16px 12px',textAlign:'center'}}>
+            <div style={{fontSize:9,letterSpacing:2,color:T.muted,textTransform:'uppercase',marginBottom:6}}>{s.label}</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,color:T.gold}}>{s.value}</div>
+            <div style={{fontSize:10,color:T.muted,marginTop:4}}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Mood chart */}
+      <div style={{background:T.bg2,border:`1px solid ${T.b1}`,borderRadius:14,padding:'14px 16px',marginBottom:14}}>
+        <div style={{fontSize:9,letterSpacing:2,color:T.muted,textTransform:'uppercase',marginBottom:6}}>Últimos 7 dias · humor</div>
+        <MoodChart moodLog={moodLog}/>
+      </div>
+
+      {lastMedal?(
+        <div style={{background:'rgba(200,151,58,0.06)',border:`1px solid ${T.b2}`,borderRadius:14,padding:16,marginBottom:14,textAlign:'center'}}>
+          <div style={{fontSize:9,letterSpacing:2,color:T.muted,textTransform:'uppercase',marginBottom:4}}>Posto atual</div>
+          <div style={{fontSize:46,marginBottom:6}}>{lastMedal.icon}</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:T.gold}}>{lastMedal.name}</div>
+          <div style={{fontSize:12,color:T.cream2,marginTop:4,fontStyle:'italic'}}>{lastMedal.note}</div>
+        </div>
+      ):(
+        <div style={{background:T.bg2,border:`1px solid ${T.b1}`,borderRadius:14,padding:16,marginBottom:14,textAlign:'center'}}>
+          <p style={{fontSize:14,color:T.cream2,fontStyle:'italic',fontFamily:"'Cormorant Garamond',serif"}}>Complete 3 dias seguidos para conquistar seu primeiro posto.</p>
+        </div>
+      )}
+
+      {nextMedal&&(
+        <div style={{background:T.bg2,border:`1px solid ${T.b1}`,borderRadius:14,padding:'14px 16px',marginBottom:14}}>
+          <div style={{fontSize:9,letterSpacing:2,color:T.muted,textTransform:'uppercase',marginBottom:10}}>Próximo posto</div>
+          <div style={{display:'flex',alignItems:'center',gap:14}}>
+            <div style={{fontSize:34,opacity:.45,flexShrink:0}}>{nextMedal.icon}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.cream,marginBottom:4}}>{nextMedal.name}</div>
+              <div style={{fontSize:11,color:T.muted,marginBottom:8}}>faltam {nextMedal.days-streak} dias</div>
+              <div style={{height:3,background:T.bg3,borderRadius:3}}>
+                <div style={{height:'100%',width:pct+'%',background:T.gold,borderRadius:3,transition:'width .5s'}}/>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{fontSize:9,letterSpacing:2,color:T.muted,textTransform:'uppercase',marginBottom:10}}>Todos os postos</div>
+      <div style={{display:'flex',flexDirection:'column',gap:7}}>
+        {MEDALS.map(m=>{
+          const ok=unlocked.includes(m.name);
+          return(
+            <div key={m.name} style={{display:'flex',alignItems:'center',gap:12,background:ok?'rgba(200,151,58,0.06)':T.bg2,border:`1px solid ${ok?T.b2:T.b1}`,borderRadius:10,padding:'11px 14px',opacity:ok?1:.5,transition:'all .3s'}}>
+              <div style={{fontSize:20,width:28,textAlign:'center',filter:ok?'none':'grayscale(1)'}}>{m.icon}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:15,color:ok?T.gold:T.cream2}}>{m.name}</div>
+                <div style={{fontSize:11,color:T.muted}}>{m.days} dias · {m.note}</div>
+              </div>
+              {ok?<div style={{fontSize:10,color:T.gold,border:`1px solid ${T.b2}`,padding:'2px 8px',borderRadius:10}}>✦</div>:<div style={{fontSize:10,color:T.muted}}>+₣20</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── APP ROOT ──────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+function App(){
+  // Onboarding
+  const[onboarded,setOnboarded]=useState(()=>LS.get('ms_onboarded',false));
+  const[profile,setProfile]=useState(()=>LS.get('ms_profile',null));
+
+  // Trial / subscription
+  const[trial,setTrial]=useState(()=>getTrialState());
+  const[showPaywall,setShowPaywall]=useState(false);
+
+  // Mood
+  const todayKey=new Date().toDateString();
+  const[moodToday,setMoodToday]=useState(()=>LS.get('ms_mood_today','')===todayKey?(LS.get('ms_mood_log',[]).slice(-1)[0]?.mood||null):null);
+  const[showMood,setShowMood]=useState(false);
+  const[moodLog,setMoodLog]=useState(()=>LS.get('ms_mood_log',[]));
+
+  // Core state
+  const[tab,setTab]=useState(()=>{
+    const h=new Date().getHours();
+    return h<14?'morning':h<22?'evening':'morning';
+  });
+  const[streak,setStreak]=useState(()=>LS.get('ms_streak',0));
+  const[franckls,setFranckls]=useState(()=>LS.get('ms_franckls',0));
+  const[unlocked,setUnlocked]=useState(()=>LS.get('ms_unlocked',[]));
+  const[checked,setChecked]=useState(()=>LS.get('ms_checked',{}));
+  const[sequence,setSequence]=useState(()=>LS.get('ms_sequence',{
+    morning:['frankl','breath478'],
+    evening:['shadow1','relax'],
+  }));
+  const[toast,setToast]=useState(null);
+
+  // Show mood checkin once per day after onboarding
+  useEffect(()=>{
+    if(onboarded&&!moodToday&&LS.get('ms_mood_today','')!==todayKey){
+      const t=setTimeout(()=>setShowMood(true),900);
+      return()=>clearTimeout(t);
+    }
+  },[onboarded]);
+
+  // Setup notifications scheduler when granted
+  useEffect(()=>{
+    if(!onboarded)return;
+    if('Notification' in window && Notification.permission==='granted'){
+      scheduleLocalNotifications(8,21);
+    }
+  },[onboarded]);
+
+  // Streak check
+  useEffect(()=>{
+    const t=getTrialState();
+    setTrial(t);
+    if(!t.active&&!t.never&&!t.subscribed){setShowPaywall(true);}
+
+    const today=new Date().toDateString();
+    const prev=LS.get('ms_today',{});
+    const mSeq=sequence.morning||[];
+    const eSeq=sequence.evening||[];
+    const mDone=mSeq.length>0&&mSeq.every(id=>checked[id]);
+    const eDone=eSeq.length>0&&eSeq.every(id=>checked[id]);
+    const anyComplete=mDone||eDone;
+    if(anyComplete&&prev.date!==today){
+      LS.set('ms_today',{date:today});
+      const ns=streak+1;setStreak(ns);LS.set('ms_streak',ns);
+      // +10 Franckls per day
+      const nf1=franckls+10;
+      const newMedal=MEDALS.slice().reverse().find(m=>m.days<=ns&&!unlocked.includes(m.name));
+      if(newMedal){
+        const nu=[...unlocked,newMedal.name];setUnlocked(nu);LS.set('ms_unlocked',nu);
+        const nf2=nf1+20;setFranckls(nf2);LS.set('ms_franckls',nf2);
+        setToast(newMedal);
+      }else{
+        setFranckls(nf1);LS.set('ms_franckls',nf1);
+      }
+    }
+  },[checked]);
+
+  function handleOnboardDone(answers){
+    setProfile(answers);
+    setOnboarded(true);
+    setTrial(getTrialState());
+    // Configure sequence based on session pref
+    if(answers.session==='morning')setSequence(s=>({...s,evening:[]}));
+    if(answers.session==='evening')setSequence(s=>({...s,morning:[]}));
+    setTab(answers.session==='evening'?'evening':'morning');
+  }
+
+  function handleMoodDone(mood){
+    setMoodToday(mood);
+    setMoodLog(LS.get('ms_mood_log',[]));
+    setShowMood(false);
+  }
+
+  function buyCosmetic(item){
+    const nf=franckls-item.price;
+    setFranckls(nf);LS.set('ms_franckls',nf);
+  }
+
+  function handleSubscribe(){
+    setShowPaywall(false);
+    setTrial(getTrialState());
+  }
+
+  // If not onboarded, show onboarding
+  if(!onboarded){
+    return <Onboarding onDone={handleOnboardDone}/>;
+  }
+
+  const mDoneCount=(sequence.morning||[]).filter(id=>checked[id]).length;
+  const eDoneCount=(sequence.evening||[]).filter(id=>checked[id]).length;
+  const mTotal=(sequence.morning||[]).length;
+  const eTotal=(sequence.evening||[]).length;
+
+  const tabs=[
+    {id:'morning', label:'Manhã', icon:'☀'},
+    {id:'evening', label:'Noite', icon:'☽'},
+    {id:'shop',    label:'Loja',  icon:'◈'},
+    {id:'progress',label:'Jornada',icon:'✦'},
+  ];
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',background:T.bg,overflow:'hidden'}}>
+      {/* Banner: trial countdown OR ad if subscribed */}
+      {!trial.subscribed&&trial.active&&trial.daysLeft<=TRIAL_DAYS&&<TrialBanner daysLeft={trial.daysLeft} onUpgrade={()=>setShowPaywall(true)}/>}
+      {trial.subscribed&&<AdBanner/>}
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 18px',background:T.bg2,borderBottom:`1px solid ${T.b1}`,flexShrink:0}}>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:T.gold,letterSpacing:.5}}>MindScape</div>
+        <div style={{display:'flex',gap:12,alignItems:'center'}}>
+          <span style={{fontSize:12,color:T.cream2}}>{streak}🔥</span>
+          <span style={{fontSize:12,color:T.gold,background:'rgba(200,151,58,0.1)',border:`1px solid ${T.b2}`,padding:'2px 10px',borderRadius:20}}>₣{franckls}</span>
+        </div>
+      </div>
+
+      <div style={{flex:1,overflow:'hidden'}}>
+        {tab==='morning'&&<RitualsScreen key="morning" session="morning" sequence={sequence} setSequence={setSequence} checked={checked} setChecked={setChecked} todayMood={moodToday}/>}
+        {tab==='evening'&&<RitualsScreen key="evening" session="evening" sequence={sequence} setSequence={setSequence} checked={checked} setChecked={setChecked} todayMood={moodToday}/>}
+        {tab==='shop'&&<ShopScreen franckls={franckls} onBuy={buyCosmetic}/>}
+        {tab==='progress'&&<ProgressScreen streak={streak} franckls={franckls} unlocked={unlocked} moodLog={moodLog}/>}
+      </div>
+
+      <div style={{display:'flex',borderTop:`1px solid ${T.b1}`,background:T.bg2,flexShrink:0}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3,padding:'10px 4px 8px',cursor:'pointer',border:'none',background:'none',color:tab===t.id?T.gold:T.muted,fontFamily:"'Jost',sans-serif",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',transition:'color .2s',position:'relative'}}>
+            <span style={{fontSize:17}}>{t.icon}</span>
+            {t.label}
+            {t.id==='morning'&&mTotal>0&&mDoneCount===mTotal&&<div style={{position:'absolute',top:8,right:'22%',width:6,height:6,borderRadius:'50%',background:T.gold2}}/>}
+            {t.id==='evening'&&eTotal>0&&eDoneCount===eTotal&&<div style={{position:'absolute',top:8,right:'22%',width:6,height:6,borderRadius:'50%',background:T.gold2}}/>}
+          </button>
+        ))}
+      </div>
+
+      {toast&&<MedalToast medal={toast} onDone={()=>setToast(null)}/>}
+      {showMood&&<MoodCheckin onDone={handleMoodDone} onSkip={()=>setShowMood(false)}/>}
+      {showPaywall&&<Paywall onSubscribe={handleSubscribe} onClose={()=>setShowPaywall(false)} canClose={trial.active}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>    prompt:'My dream last night:',
   },
   {
     id:'seligman',title:'Gratitude Anchoring',author:'Martin Seligman',
